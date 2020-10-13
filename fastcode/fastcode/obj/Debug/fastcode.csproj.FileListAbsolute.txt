@@ -1,0 +1,6 @@
+C:\Users\Administrator\source\repos\fastcode\fastcode\bin\Debug\fastcode.exe.config
+C:\Users\Administrator\source\repos\fastcode\fastcode\bin\Debug\fastcode.exe
+C:\Users\Administrator\source\repos\fastcode\fastcode\bin\Debug\fastcode.pdb
+C:\Users\Administrator\source\repos\fastcode\fastcode\obj\Debug\fastcode.exe
+C:\Users\Administrator\source\repos\fastcode\fastcode\obj\Debug\fastcode.pdb
+C:\Users\Administrator\source\repos\fastcode\fastcode\obj\Debug\fastcode.csprojAssemblyReference.cache
