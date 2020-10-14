@@ -29,7 +29,10 @@ namespace fastcode.parsing
         public void ShiftCurrentPosition(Marker marker)
         {
             Position = new Marker(marker.Index,marker.Collumn,marker.Row);
-            lastChar = source[marker.Index];
+            if (marker.Index < source.Length)
+            {
+                lastChar = source[marker.Index];
+            }
         }
         
         //peeking to examine the next character (doesn't remove from stream)
@@ -110,10 +113,6 @@ namespace fastcode.parsing
 
                 switch(TokenIdentifier)
                 {
-                    case "out": 
-                        return Token.Out;
-                    case "in": 
-                        return Token.In;
                     case "and":
                         return Token.And;
                     case "or":
@@ -146,6 +145,8 @@ namespace fastcode.parsing
                         return Token.Stop;
                     case "assert":
                         return Token.Assert;
+                    case "import":
+                        return Token.Import;
                     case "rem":
                         while(lastChar != '\n')
                         {
@@ -197,9 +198,15 @@ namespace fastcode.parsing
                         token = Token.CloseParenthesis;
                         break;
                     case '{':
-                        token = Token.OpenBracket;
+                        token = Token.OpenBrace;
                         break;
                     case '}':
+                        token = Token.CloseBrace;
+                        break;
+                    case '[':
+                        token = Token.OpenBracket;
+                        break;
+                    case ']':
                         token = Token.CloseBracket;
                         break;
                     case '+':
@@ -286,6 +293,10 @@ namespace fastcode.parsing
                                         break;
                                 }
                             }
+                            else if(lastChar == EOF)
+                            {
+                                throw new Exception("Expected \" at the end of the string value.");
+                            }
                             else
                             {
                                 str += lastChar;
@@ -293,6 +304,11 @@ namespace fastcode.parsing
                         }
                         TokenValue = new Value(str);
                         token = Token.Value;
+                        break;
+                    case '\'':
+                        TokenValue = new Value(ReadChar());
+                        token = Token.Value;
+                        ReadChar();
                         break;
                     case EOF:
                         return Token.EndOfFile;

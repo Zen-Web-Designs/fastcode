@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using fastcode.parsing;
+using fastcode.flib;
 
 namespace fastcode.runtime
 {
@@ -19,9 +20,15 @@ namespace fastcode.runtime
             get { return lexer.Position; }
         }
 
+        Dictionary<string, Library> BuiltInLibraries = new Dictionary<string, Library>()
+        {
+            {"flib.stdlib", new StandardLibrary() }
+        };
 
         public Dictionary<string, Value> Variables { get; private set; } //dictionaries are used for fast access
 
+        public delegate Value BuiltInFunction(List<Value> arguments);
+        Dictionary<string, BuiltInFunction> builtInFunctions;
         Dictionary<string, FunctionStructure> functions;
 
         List<Value> functionResults;
@@ -48,6 +55,7 @@ namespace fastcode.runtime
             this.Output = output;
             this.Input = input;
             this.Variables = new Dictionary<string, Value>();
+            this.builtInFunctions = new Dictionary<string, BuiltInFunction>();
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
             this.UsedStack = new Stack<ControlStructure>();
@@ -64,6 +72,7 @@ namespace fastcode.runtime
         //starts the program
         public void Start()
         {
+            builtInFunctions.Clear();
             CallStack.Clear();
             CallStack.Push(new ControlStructure(ControlStructureType.MainProgram));
             ReadNextToken();
@@ -107,60 +116,131 @@ namespace fastcode.runtime
             ReadNextToken();
             switch (keyword)
             {
-                case Token.Out:
-                    Value toprint = EvaluateNextExpression();
-                    if(toprint == null)
-                    {
-                        return;
-                    }
-                    Output.Write(toprint);
-                    break;
-                case Token.In: //I know it's a bit funny to have the input keyword go before the identifier, but it'll be alot faster if everything started with a command
-                    MatchToken(Token.Identifier); 
-                    if(!Variables.ContainsKey(lexer.TokenIdentifier))
-                    {
-                        Variables.Add(lexer.TokenIdentifier, Value.Null);
-                    }
-                    string input = Input.ReadLine();
-                    try
-                    {
-                        Variables[lexer.TokenIdentifier] = new Value(double.Parse(input));
-                    }
-                    catch
-                    {
-                        Variables[lexer.TokenIdentifier] = new Value(input);
-                    }
-                    ReadNextToken();
-                    break;
                 case Token.Identifier:
-                    if(lastToken == Token.Set)
+                    string id = lexer.TokenIdentifier;
+                    if (lastToken == Token.Set)
                     {
-                        string id = lexer.TokenIdentifier;
                         if(ReadOnlyVariables.Contains(id))
                         {
                             throw new Exception("FastCode cannot write to a read only variable.");
                         }
-                        if (!Variables.ContainsKey(id))
-                        {
-                            Variables.Add(id, Value.Null);
-                        }
                         ReadNextToken();
-                        Variables[id] = EvaluateNextExpression();
-                        if(Variables[id] == null)
+                        Value v1 = EvaluateNextExpression();
+                        if(v1 == null)
                         {
                             return;
                         }
+                        if(Variables.ContainsKey(id))
+                        {
+                            Variables[id] = v1;
+                            break;
+                        }
+                        else
+                        {
+                            Stack<ControlStructure> searched = new Stack<ControlStructure>();
+                            while (CallStack.Count != 0)
+                            {
+                                ControlStructure controlStructure = CallStack.Pop();
+                                if (controlStructure.Type == ControlStructureType.Function)
+                                {
+                                    FunctionStructure f = (FunctionStructure)controlStructure;
+                                    if(f.Arguments.ContainsKey(id))
+                                    {
+                                        f.Arguments[id] = v1;
+                                    }
+                                    searched.Push(controlStructure);
+                                    break;
+                                }
+                                searched.Push(controlStructure);
+                            }
+                            while (searched.Count != 0)
+                            {
+                                CallStack.Push(searched.Pop());
+                            }
+                        }
+                        Variables.Add(id, v1);
                         break;
                     }
                     else if(lastToken == Token.OpenParenthesis)
                     {
-                        string id = lexer.TokenIdentifier;
-                        if(functions.ContainsKey(id))
+                        if(functions.ContainsKey(id) ||builtInFunctions.ContainsKey(id))
                         {
                             lexer.ShiftCurrentPosition(keywordMarker);
                             ReadNextToken();
                             NextValue();
                             return;
+                        }
+                    }
+                    else if(lastToken == Token.OpenBracket)
+                    {
+                        ReadNextToken();
+                        Value v = EvaluateNextExpression();
+                        if (v == null)
+                        {
+                            return;
+                        }
+                        if (v.Type != ValueType.Double)
+                        {
+                            throw new Exception("Indicie's must be of type double.");
+                        }
+                        MatchToken(Token.CloseBracket);
+                        ReadNextToken();
+                        MatchToken(Token.Set);
+                        ReadNextToken();
+                        Value setval = EvaluateNextExpression();
+                        if(setval == null)
+                        {
+                            return;
+                        }
+                        if (Variables.ContainsKey(id))
+                        {
+                            if (Variables[id].Type == ValueType.Array)
+                            {
+                                Variables[id].Array[(int)v.Double] = setval;
+                            }
+                            else if (Variables[id].Type == ValueType.String)
+                            {
+                                if (setval.Type != ValueType.Char)
+                                {
+                                    throw new Exception("Strings can only index characters.");
+                                }
+                                char[] str = Variables[id].String.ToCharArray();
+                                str[(int)v.Double] = setval.Character;
+                                Variables[id] = new Value(new string(str));
+                            }
+                        }
+                        else
+                        {
+                            Stack<ControlStructure> searched = new Stack<ControlStructure>();
+                            while (CallStack.Count != 0)
+                            {
+                                ControlStructure controlStructure = CallStack.Pop();
+                                if (controlStructure.Type == ControlStructureType.Function)
+                                {
+                                    FunctionStructure f = (FunctionStructure)controlStructure;
+                                    if (f.Arguments[id].Type == ValueType.Array)
+                                    {
+                                        f.Arguments[id].Array[(int)v.Double] = setval;
+                                    }
+                                    else if (f.Arguments[id].Type == ValueType.String)
+                                    {
+                                        if (setval.Type != ValueType.Char)
+                                        {
+                                            throw new Exception("Strings can only index characters.");
+                                        }
+                                        char[] str = f.Arguments[id].String.ToCharArray();
+                                        str[(int)v.Double] = setval.Character;
+                                        f.Arguments[id] = new Value(new string(str));
+                                    }
+                                    searched.Push(controlStructure);
+                                    break;
+                                }
+                                searched.Push(controlStructure);
+                            }
+                            while (searched.Count != 0)
+                            {
+                                CallStack.Push(searched.Pop());
+                            }
                         }
                     }
                     throw new Exception("Identifiers cannot stand alone without a keyword.");
@@ -215,7 +295,7 @@ namespace fastcode.runtime
                     }
                     if(function == null)
                     {
-                        throw new Exception("");
+                        throw new Exception("Only functions may return values.");
                     }
 
                     if (PeekNextToken() != Token.Newline && PeekNextToken() != Token.Semicolon)
@@ -237,6 +317,22 @@ namespace fastcode.runtime
                 case Token.Stop:
                     Exit = true;
                     return;
+                case Token.Import:
+                    MatchToken(Token.Value);
+                    if(lexer.TokenValue.Type != ValueType.String)
+                    {
+                        throw new Exception("Expected string, got " + lexer.TokenValue.Type);
+                    }
+                    if(BuiltInLibraries.ContainsKey(lexer.TokenValue.String))
+                    {
+                        BuiltInLibraries[lexer.TokenValue.String].Install(ref builtInFunctions, this);
+                    }
+                    else
+                    {
+                        throw new Exception("Cannot find library " + lexer.TokenValue.Type);
+                    }
+                    ReadNextToken();
+                    break;
                 case Token.EndOfFile:
                     Exit = true;
                     return;
@@ -382,10 +478,19 @@ namespace fastcode.runtime
                     CallStack.Push(countStructure);
                     countStructure.IndexerIdentifier = id2;
                     ReadTillControlStructureStart();
+                    if(countStructure.Count >= countStructure.CountTo)
+                    {
+                        SkipControlStructure();
+                        UsedStack.Push(CallStack.Pop());
+                    }
                     break;
                 case Token.Function:
                     MatchToken(Token.Identifier);
                     string fid = lexer.TokenIdentifier;
+                    if(functions.ContainsKey(fid) || Variables.ContainsKey(fid) || builtInFunctions.ContainsKey(fid))
+                    {
+                        throw new Exception("Identifiers must be unique");
+                    }
                     FunctionStructure functionStructure = new FunctionStructure(fid);
                     ReadNextToken();
                     MatchToken(Token.OpenParenthesis);
@@ -393,13 +498,13 @@ namespace fastcode.runtime
                     while(lastToken != Token.CloseParenthesis)
                     {
                         ReadNextToken();
-                        if(lastToken == Token.Comma)
+                        if(lastToken == Token.Comma || lastToken == Token.CloseParenthesis)
                         {
                             continue;
                         }
                         else if(lastToken == Token.Identifier)
                         {
-                            if(argument_identifiers.Contains(lexer.TokenIdentifier))
+                            if(argument_identifiers.Contains(lexer.TokenIdentifier) || Variables.ContainsKey(lexer.TokenIdentifier))
                             {
                                 throw new Exception("Argument identifiers must be unique.");
                             }
@@ -421,7 +526,7 @@ namespace fastcode.runtime
                     functions[fid] = functionStructure;
                     SkipControlStructure();
                     break;
-                case Token.CloseBracket: //checks to return or repeat. 
+                case Token.CloseBrace: //checks to return or repeat. 
                     bracket_counter--;
                     if(CallStack.Peek().GetType() == typeof(WhileStructure))
                     {
@@ -456,9 +561,9 @@ namespace fastcode.runtime
                     else if(CallStack.Peek().GetType() == typeof(CountStructure))
                     {
                         CountStructure controlStructure = (CountStructure)CallStack.Pop();
-                        if(controlStructure.Count < controlStructure.CountTo)
+                        controlStructure.Count++;
+                        if (controlStructure.Count < controlStructure.CountTo)
                         {
-                            controlStructure.Count++;
                             Variables[controlStructure.IndexerIdentifier] = new Value(controlStructure.Count);
                             CallStack.Push(controlStructure);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
@@ -525,11 +630,11 @@ namespace fastcode.runtime
 
         public void ReadTillControlStructureStart(bool markposition=true)
         {
-            while (lastToken != Token.OpenBracket)
+            while (lastToken != Token.OpenBrace)
             {
                 if (lastToken != Token.Newline && lastToken != Token.CloseParenthesis)
                 {
-                    throw new UnexpectedStatementException(Token.OpenBracket.ToString(), lastToken.ToString());
+                    throw new UnexpectedStatementException(Token.OpenBrace.ToString(), lastToken.ToString());
                 }
                 ReadNextToken();
             }
@@ -550,11 +655,11 @@ namespace fastcode.runtime
 
             while (i != bracket_counter)
             {
-                if (lastToken == Token.OpenBracket)
+                if (lastToken == Token.OpenBrace)
                 {
                     bracket_counter++;
                 }
-                else if (lastToken == Token.CloseBracket)
+                else if (lastToken == Token.CloseBrace)
                 {
                     bracket_counter--;
                 }
@@ -623,18 +728,60 @@ namespace fastcode.runtime
             {
                 if(Variables.ContainsKey(lexer.TokenIdentifier)) //see if it's a variable
                 {
-                    val = Variables[lexer.TokenIdentifier];
+                    string vid = lexer.TokenIdentifier;
+                    if (PeekNextToken() == Token.OpenBracket)
+                    {
+                        ReadNextToken();
+                        ReadNextToken();
+                        Value v = EvaluateNextExpression();
+                        if (v == null)
+                        {
+                            return null;
+                        }
+                        if (v.Type != ValueType.Double)
+                        {
+                            throw new Exception("Indicie's must be of type double.");
+                        }
+                        if (Variables[vid].Type == ValueType.String)
+                        {
+                            val = new Value(Variables[vid].String[(int)v.Double]);
+                        }
+                        else if (Variables[vid].Type == ValueType.Array)
+                        {
+                            val = Variables[vid].Array[(int)v.Double];
+                        }
+                        else
+                        {
+                            throw new Exception("Only arrays and strings can be indexed.");
+                        }
+                        MatchToken(Token.CloseBracket);
+                    }
+                    else
+                    {
+                        val = Variables[lexer.TokenIdentifier];
+                    }
                 }
-                else if(functions.ContainsKey(lexer.TokenIdentifier)) //see if it's a function
+                else if(functions.ContainsKey(lexer.TokenIdentifier) || builtInFunctions.ContainsKey(lexer.TokenIdentifier)) //see if it's a function
                 {
                     List<Value> arguments = new List<Value>();
                     ReadNextToken();
                     MatchToken(Token.OpenParenthesis);
                     string fid = lexer.TokenIdentifier;
-                    while(lastToken != Token.CloseParenthesis) //collect all the arguments
+                    if (procFunctionResults < functionResults.Count)
+                    {
+                        Value value = functionResults[procFunctionResults];
+                        procFunctionResults++;
+                        while (lastToken != Token.CloseParenthesis)
+                        {
+                            ReadNextToken();
+                        }
+                        ReadNextToken();
+                        return value;
+                    }
+                    while (lastToken != Token.CloseParenthesis) //collect all the arguments
                     {
                         ReadNextToken();
-                        if(lastToken == Token.Comma)
+                        if(lastToken == Token.Comma || lastToken == Token.CloseParenthesis)
                         {
                             continue; //just skip the comma's
                         }
@@ -648,16 +795,9 @@ namespace fastcode.runtime
                             arguments.Add(v);
                         }
                     }
-                    //val = functions[lexer.TokenIdentifier](this, arguments); //evaluate the value
-                    if (procFunctionResults < functionResults.Count)
+                    if (functions.ContainsKey(fid))
                     {
-                        Value value = functionResults[procFunctionResults];
-                        procFunctionResults++;
-                        ReadNextToken();
-                        return value;
-                    }
-                    else
-                    {
+                        //val = functions[lexer.TokenIdentifier](this, arguments); //evaluate the value
                         FunctionStructure f = functions[fid].Clone();
                         f.MarkAsExecuting();
                         f.SetArguments(arguments);
@@ -667,6 +807,11 @@ namespace fastcode.runtime
                         lexer.ShiftCurrentPosition(functions[fid].StartPosition);
                         ReadNextToken();
                         return null;
+                    }
+                    else
+                    {
+                        ReadNextToken();
+                        return builtInFunctions[fid].Invoke(arguments);
                     }
                 }
                 else
@@ -681,7 +826,38 @@ namespace fastcode.runtime
                             FunctionStructure function = (FunctionStructure)controlStructure;
                             if(function.Arguments.ContainsKey(lexer.TokenIdentifier))
                             {
-                                val = function.Arguments[lexer.TokenIdentifier];
+                                string fid = lexer.TokenIdentifier;
+                                if (PeekNextToken() == Token.OpenBracket)
+                                {
+                                    ReadNextToken();
+                                    ReadNextToken();
+                                    Value v = EvaluateNextExpression();
+                                    if (v == null)
+                                    {
+                                        return null;
+                                    }
+                                    if (v.Type != ValueType.Double)
+                                    {
+                                        throw new Exception("Indicie's must be of type double.");
+                                    }
+                                    if (function.Arguments[fid].Type == ValueType.String)
+                                    {
+                                        val = new Value(function.Arguments[fid].String[(int)v.Double]);
+                                    }
+                                    else if (function.Arguments[fid].Type == ValueType.Array)
+                                    {
+                                        val = function.Arguments[fid].Array[(int)v.Double];
+                                    }
+                                    else
+                                    {
+                                        throw new Exception("Only arrays and strings can be indexed.");
+                                    }
+                                    MatchToken(Token.CloseBracket);
+                                }
+                                else
+                                {
+                                    val = function.Arguments[fid];
+                                }
                                 searched.Push(function);
                                 break;
                             }
@@ -709,6 +885,29 @@ namespace fastcode.runtime
                 }
                 MatchToken(Token.CloseParenthesis);
                 ReadNextToken();
+            }
+            else if(lastToken == Token.OpenBracket)
+            {
+                List<Value> values = new List<Value>();
+                while (lastToken != Token.CloseBracket) //collect all the arguments
+                {
+                    ReadNextToken();
+                    if (lastToken == Token.Comma || lastToken == Token.CloseBracket)
+                    {
+                        continue; //just skip the comma's
+                    }
+                    else
+                    {
+                        Value v = EvaluateNextExpression();
+                        if (v == null)
+                        {
+                            return null; //this is how to escape the recursive function when a function needs to be evaluated through the main loop first
+                        }
+                        values.Add(v);
+                    }
+                }
+                ReadNextToken();
+                val = new Value(values);
             }
             //this part handles uniary operations
             else

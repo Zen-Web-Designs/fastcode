@@ -45,7 +45,7 @@ namespace fastcode
                             ConsoleKeyInfo key = Console.ReadKey();
                             if (key.Key == ConsoleKey.Y)
                             {
-                                Console.WriteLine("\n");
+                                Console.WriteLine();
                                 run(string.Join("\n", Lines));
                                 Console.WriteLine();
                                 break;

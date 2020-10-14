@@ -14,12 +14,11 @@ namespace fastcode.parsing
         Value,
         Function,
 
-        Out, //basic input/output. It will write to a stream
-        In,
         Break,
         Return,
         Stop,
         Assert,
+        Import,
         From,
         To,
 
@@ -33,9 +32,11 @@ namespace fastcode.parsing
         Newline,    //control tokens
         Semicolon,
         Comma,
-        OpenParenthesis,
+        OpenParenthesis, //for arguments
         CloseParenthesis,
-        OpenBracket,
+        OpenBrace, //for control structures
+        CloseBrace,
+        OpenBracket, //for arrays
         CloseBracket,
 
         Plus,   //operator related keywords 
