@@ -135,6 +135,8 @@ namespace fastcode.runtime
 
     class ControlStructure
     {
+        public HashSet<int> functionEvaluativeLocations;
+        public HashSet<int> expressionStartLocations;
         public ControlStructureRepeatStatus RepeatStatus { get; set; }
         public ControlStructureType Type { get; private set; }
         public object Result { get; set; }
@@ -145,6 +147,8 @@ namespace fastcode.runtime
         {
             this.Type = type;
             this.RepeatStatus = ControlStructureRepeatStatus.Continue;
+            this.functionEvaluativeLocations = new HashSet<int>();
+            this.expressionStartLocations = new HashSet<int>();
         }
     }
 }

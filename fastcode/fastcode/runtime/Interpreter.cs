@@ -1,11 +1,9 @@
-﻿using System;
+﻿using fastcode.flib;
+using fastcode.parsing;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using fastcode.parsing;
-using fastcode.flib;
 
 namespace fastcode.runtime
 {
@@ -31,9 +29,6 @@ namespace fastcode.runtime
         Dictionary<string, BuiltInFunction> builtInFunctions;
         Dictionary<string, FunctionStructure> functions;
 
-        List<Value> functionResults;
-        int procFunctionResults;
-
         Lexer lexer; //parsing aides
         Token prevToken;
         Token lastToken;
@@ -43,7 +38,14 @@ namespace fastcode.runtime
 
         //this makes up our "call stack" for control structures. Also includes whiles and elses and that stuff rather than functions
         Stack<ControlStructure> CallStack;
-        Stack<ControlStructure> UsedStack; //sturctures that have been popped from call stack
+        ControlStructure prevStructure;
+
+        List<Tuple<int, List<Value>>> functionEvaluativeStack; //used when evaluating expressions that call functions
+        List<List<Value>> argumentEvaluativeQueue;
+        Stack<int> argumentEvaluations;
+        Stack<int> functionEvaluations;
+        int currentEvalArgument;
+        int currentFunction;
 
         public bool Exit { get; private set; } //exit condition - private set so the program cannot be aborted from the outside without going through an exit function
 
@@ -58,15 +60,18 @@ namespace fastcode.runtime
             this.builtInFunctions = new Dictionary<string, BuiltInFunction>();
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
-            this.UsedStack = new Stack<ControlStructure>();
-            this.functionResults = new List<Value>();
+            this.functionEvaluativeStack = new List<Tuple<int, List<Value>>>();
+            this.argumentEvaluativeQueue = new List<List<Value>>();
+            this.argumentEvaluations = new Stack<int>();
+            this.functionEvaluations = new Stack<int>();
             Variables["null"] = Value.Null;
             Variables["true"] = new Value(1);
             Variables["false"] = new Value(0);
             Variables["endl"] = new Value(Environment.NewLine);
             lexer = new Lexer(source);
             bracket_counter = 0;
-            procFunctionResults = 0;
+            currentEvalArgument = 0;
+            currentFunction = -1;
         }
 
         //starts the program
@@ -74,6 +79,7 @@ namespace fastcode.runtime
         {
             builtInFunctions.Clear();
             CallStack.Clear();
+            functionEvaluativeStack.Clear();
             CallStack.Push(new ControlStructure(ControlStructureType.MainProgram));
             ReadNextToken();
             while(Exit == false) //program loop
@@ -167,7 +173,7 @@ namespace fastcode.runtime
                         {
                             lexer.ShiftCurrentPosition(keywordMarker);
                             ReadNextToken();
-                            NextValue();
+                            var n = EvaluateNextExpression();
                             return;
                         }
                     }
@@ -271,11 +277,11 @@ namespace fastcode.runtime
                                 throw new UnexpectedKeyword(Token.Break);
                             }
                             i++;
-                            UsedStack.Push(CallStack.Pop());
+                            prevStructure = CallStack.Pop();
                         }
                         ControlStructure current66 = CallStack.Pop();
                         current66.RepeatStatus = ControlStructureRepeatStatus.Return;
-                        UsedStack.Push(current66);
+                        prevStructure = current66;
                         SkipControlStructure(-i);
                         
                         break;
@@ -311,7 +317,7 @@ namespace fastcode.runtime
                     }
                     CallStack.Push(function);
                     SkipControlStructure(-j,true);
-                    ExecuteNextStatement();
+                     ExecuteNextStatement();
 
                     break;
                 case Token.Stop:
@@ -343,6 +349,7 @@ namespace fastcode.runtime
                     {
                         return;
                     }
+                    else
                     current.Result = (expr1.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
                     CallStack.Push(current);
 
@@ -351,17 +358,17 @@ namespace fastcode.runtime
                     if((bool)current.Result == true) //skip till close bracket.
                     {
                         SkipControlStructure();
-                        UsedStack.Push(CallStack.Pop());
+                        prevStructure = CallStack.Pop();
                     }
                     current.RepeatStatus = ControlStructureRepeatStatus.Return; //sets to return, ifs never repeat
                     
                     break;
                 case Token.Else: //not if results are inverted 
-                    if (UsedStack.Peek().Type != ControlStructureType.If && UsedStack.Peek().Type != ControlStructureType.Elif)
+                    if (prevStructure.Type != ControlStructureType.If && prevStructure.Type != ControlStructureType.Elif)
                     {
                         throw new UnexpectedKeyword(keyword);
                     }
-                    else if ((bool)UsedStack.Peek().Result == true) //skip all the crap
+                    else if ((bool)prevStructure.Result == true) //skip all the crap
                     {
                         CallStack.Push(new ControlStructure(ControlStructureType.Else));
                         ReadTillControlStructureStart(false);
@@ -370,7 +377,7 @@ namespace fastcode.runtime
                         current2.RepeatStatus = ControlStructureRepeatStatus.Return;
                         CallStack.Push(current2);
                     }
-                    else if ((bool)UsedStack.Peek().Result == false)
+                    else if ((bool)prevStructure.Result == false)
                     {
                         CallStack.Push(new ControlStructure(ControlStructureType.Else));
                         ReadTillControlStructureStart(false);
@@ -378,11 +385,11 @@ namespace fastcode.runtime
                         ControlStructure current3 = CallStack.Pop();
                         current3.Result = null;
                         current3.RepeatStatus = ControlStructureRepeatStatus.Return;
-                        UsedStack.Push(current3);
+                        prevStructure = current3;
                     }
                     break;
                 case Token.Elif:
-                    if(UsedStack.Peek().Type != ControlStructureType.If && UsedStack.Peek().Type != ControlStructureType.Elif)
+                    if(prevStructure.Type != ControlStructureType.If && prevStructure.Type != ControlStructureType.Elif)
                     {
                         throw new UnexpectedKeyword(keyword);
                     }
@@ -392,7 +399,7 @@ namespace fastcode.runtime
                         current5.RepeatStatus = ControlStructureRepeatStatus.Return;
                         CallStack.Push(current5);
                         current5.Result = false;
-                        if ((bool)UsedStack.Peek().Result == true)
+                        if ((bool)prevStructure.Result == true)
                         {
                             ControlStructure control4 = CallStack.Pop();
                             expr = EvaluateNextExpression();
@@ -406,15 +413,14 @@ namespace fastcode.runtime
                             if ((bool)CallStack.Peek().Result == true)
                             {
                                 SkipControlStructure();
-                                UsedStack.Push(CallStack.Pop());
+                                prevStructure = CallStack.Pop();
                             }
                         }
                         else
                         {
-                            EvaluateNextExpression();
                             ReadTillControlStructureStart(false);
                             SkipControlStructure();
-                            UsedStack.Push(CallStack.Pop());
+                            prevStructure = CallStack.Pop();
                         }
                     }
                     break;
@@ -437,7 +443,7 @@ namespace fastcode.runtime
                     {
                         whileStructure.RepeatStatus = ControlStructureRepeatStatus.Return;
                         SkipControlStructure();
-                        UsedStack.Push(CallStack.Pop());
+                        prevStructure = CallStack.Pop();
                     }
                     break;
                 case Token.Count:
@@ -481,7 +487,7 @@ namespace fastcode.runtime
                     if(countStructure.Count >= countStructure.CountTo)
                     {
                         SkipControlStructure();
-                        UsedStack.Push(CallStack.Pop());
+                        prevStructure = CallStack.Pop();
                     }
                     break;
                 case Token.Function:
@@ -574,13 +580,16 @@ namespace fastcode.runtime
                     {
                         FunctionStructure finishedfunction = (FunctionStructure)CallStack.Pop();
                         finishedfunction.MarkAsFinished();
-                        UsedStack.Push(finishedfunction);
-                        lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
-                        functionResults.Add((Value)finishedfunction.Result);
+                        prevStructure = finishedfunction;
+                        //lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
+                        //Tuple<int, List<Value>> currentEval = functionEvaluativeStack.Pop();
+                        //currentEval.Item2.Add((Value)finishedfunction.Result);
+                        //functionEvaluativeStack.Push(currentEval);
+                        functionEvaluativeStack[functionEvaluativeStack.Count-1].Item2.Add((Value)finishedfunction.Result);
                     }
                     else if (CallStack.Peek().RepeatStatus == ControlStructureRepeatStatus.Return)
                     {
-                        UsedStack.Push(CallStack.Pop());
+                        prevStructure = CallStack.Pop();
                     }
                     else if (CallStack.Peek().RepeatStatus == ControlStructureRepeatStatus.Continue)
                     {
@@ -632,10 +641,6 @@ namespace fastcode.runtime
         {
             while (lastToken != Token.OpenBrace)
             {
-                if (lastToken != Token.Newline && lastToken != Token.CloseParenthesis)
-                {
-                    throw new UnexpectedStatementException(Token.OpenBrace.ToString(), lastToken.ToString());
-                }
                 ReadNextToken();
             }
             bracket_counter++; //see one bracket;
@@ -674,9 +679,66 @@ namespace fastcode.runtime
             }
         }
 
+        Value EvaluateNextExpression(bool keepargcount = false)
+        {
+            int lid = lexer.Position.Index;
+            currentFunction++;
+
+            ControlStructure currentStructure = CallStack.Peek();
+
+            if (!currentStructure.functionEvaluativeLocations.Contains(lid))
+            {
+                currentStructure.functionEvaluativeLocations.Add(lid);
+                functionEvaluativeStack.Add(new Tuple<int, List<Value>>(0, new List<Value>()));
+            }
+            if (!keepargcount)
+            {
+                if (!currentStructure.expressionStartLocations.Contains(lid))
+                {
+                    currentStructure.expressionStartLocations.Add(lid);
+                    argumentEvaluations.Push(argumentEvaluativeQueue.Count);
+                    functionEvaluations.Push(currentFunction);
+                }
+                currentEvalArgument = argumentEvaluations.Peek();
+                currentFunction = functionEvaluations.Peek();
+            }
+            Value val = EvaluateNextExpression(0);
+            if(val == null)
+            {
+                if (!keepargcount)
+                {
+                    if (currentStructure.expressionStartLocations.Contains(lid))
+                    {
+                        currentEvalArgument = argumentEvaluations.Peek();
+                        currentFunction = functionEvaluations.Peek();
+                    }
+                    else
+                    {
+                        currentStructure.expressionStartLocations.Add(lid);
+                        argumentEvaluations.Push(currentEvalArgument);
+                        functionEvaluations.Push(currentFunction);
+                    }
+                }
+                return null;
+            }
+            else
+            {
+                if (!keepargcount)
+                {
+                    currentStructure.expressionStartLocations.Remove(lid);
+                    functionEvaluations.Pop();
+                    argumentEvaluations.Pop();
+                }
+                functionEvaluativeStack.RemoveAt(functionEvaluativeStack.Count - 1);
+                currentStructure.functionEvaluativeLocations.Remove(lid);
+                currentFunction--;
+                return val;
+            }
+        }
+
         //this and next value are really important because that's how values for arguments are ascertained
         //gets the next expression (conditions, expressions) and evaluates it. Return's 0 or 1 for conditions
-        Value EvaluateNextExpression(int min=0)
+        Value EvaluateNextExpression(int min)
         {
             Dictionary<Token, int> precedens = new Dictionary<Token, int>()
             {
@@ -763,21 +825,21 @@ namespace fastcode.runtime
                 }
                 else if(functions.ContainsKey(lexer.TokenIdentifier) || builtInFunctions.ContainsKey(lexer.TokenIdentifier)) //see if it's a function
                 {
-                    List<Value> arguments = new List<Value>();
                     ReadNextToken();
                     MatchToken(Token.OpenParenthesis);
                     string fid = lexer.TokenIdentifier;
-                    if (procFunctionResults < functionResults.Count)
+                    int aid = lexer.Position.Index;
+                    List<Value> arguments = new List<Value>();
+                    if(currentEvalArgument>=argumentEvaluativeQueue.Count)
                     {
-                        Value value = functionResults[procFunctionResults];
-                        procFunctionResults++;
-                        while (lastToken != Token.CloseParenthesis)
-                        {
-                            ReadNextToken();
-                        }
-                        ReadNextToken();
-                        return value;
+                        argumentEvaluativeQueue.Add(arguments);
                     }
+                    else
+                    {
+                        arguments = argumentEvaluativeQueue[currentEvalArgument];
+                    }
+                    currentEvalArgument++;
+                    int argno = 0; //current argument index
                     while (lastToken != Token.CloseParenthesis) //collect all the arguments
                     {
                         ReadNextToken();
@@ -787,16 +849,46 @@ namespace fastcode.runtime
                         }
                         else
                         {
-                            Value v = EvaluateNextExpression();
-                            if(v == null)
+                            if (argno >= arguments.Count)
                             {
-                                return null; //this is how to escape the recursive function when a function needs to be evaluated through the main loop first
+                                Value v = EvaluateNextExpression(true);
+                                if (v == null)
+                                {
+                                    return null; //this is how to escape the recursive function when a function needs to be evaluated through the main loop first
+                                }
+                                arguments.Add(v);
                             }
-                            arguments.Add(v);
+                            else
+                            {
+                                int paramCount = 0; //skip open params, close params till it balances out
+                                do
+                                {
+                                    ReadNextToken();
+                                    if (lastToken == Token.OpenParenthesis)
+                                    {
+                                        paramCount++;
+                                    }
+                                    else if (lastToken == Token.CloseParenthesis)
+                                    {
+                                        paramCount--;
+                                    }
+                                }
+                                while (paramCount >= 0 && lastToken!= Token.Comma);
+                            }
                         }
+                        argno++;
                     }
                     if (functions.ContainsKey(fid))
                     {
+                        if (functionEvaluativeStack[currentFunction].Item1 < functionEvaluativeStack[currentFunction].Item2.Count)
+                        {
+                            argumentEvaluativeQueue.RemoveAt(argumentEvaluativeQueue.Count-1);
+                            Value value = functionEvaluativeStack[currentFunction].Item2[functionEvaluativeStack[currentFunction].Item1];
+                            Tuple<int, List<Value>> newEval2 = new Tuple<int, List<Value>>(functionEvaluativeStack[currentFunction].Item1 + 1, functionEvaluativeStack[currentFunction].Item2);
+                            functionEvaluativeStack[currentFunction] = newEval2;
+                            ReadNextToken();
+                            return value;
+                        }
                         //val = functions[lexer.TokenIdentifier](this, arguments); //evaluate the value
                         FunctionStructure f = functions[fid].Clone();
                         f.MarkAsExecuting();
@@ -806,10 +898,13 @@ namespace fastcode.runtime
                         CallStack.Push(f);
                         lexer.ShiftCurrentPosition(functions[fid].StartPosition);
                         ReadNextToken();
+                        Tuple<int, List<Value>> newEval = new Tuple<int, List<Value>>(0, functionEvaluativeStack[currentFunction].Item2);
+                        functionEvaluativeStack[currentFunction] = newEval;
                         return null;
                     }
                     else
                     {
+                        argumentEvaluativeQueue.RemoveAt(argumentEvaluativeQueue.Count-1);
                         ReadNextToken();
                         return builtInFunctions[fid].Invoke(arguments);
                     }

@@ -50,7 +50,7 @@ namespace fastcode.flib
             {
                 OutputWriter.Write(argument.ToString());
             }
-            return null;
+            return Value.Null;
         }
 
         public static Value IsDouble(List<Value> arguments)

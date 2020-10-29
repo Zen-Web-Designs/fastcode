@@ -30,7 +30,7 @@ namespace fastcode
                     Capacity += Convert.ToUInt64(WniPART.Properties["Capacity"].Value);
                 }
 
-                Console.WriteLine("FASTCODE version 1\nWritten by Michael Wang\n");
+                Console.WriteLine("FASTCODE prototype version 1\nWritten by Michael Wang\n");
                 Console.WriteLine(Capacity + " Bytes of Memory Availible\n");
 
                 while (true)
@@ -97,16 +97,15 @@ namespace fastcode
         static void run(string source)
         {
             Interpreter interpreter = new Interpreter(Console.Out,Console.In,source);
-
             try
             {
                 interpreter.Start();
             }
-            catch(Exception e)
+            catch (Exception e)
             {
-                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row +1)+ ", COL: " + (interpreter.Position.Collumn+1) + ", INDEX: " + interpreter.Position.Index + ". The program has been terminated.");
+                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1) + ", INDEX: " + interpreter.Position.Index + ". The program has been terminated.");
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\""+Lines[interpreter.Position.Row]+"\"\n");
+                Console.WriteLine("\"" + Lines[interpreter.Position.Row] + "\"\n");
                 Console.ForegroundColor = defaultColor;
                 Console.WriteLine(e.GetType());
                 Console.WriteLine(e.Message);
