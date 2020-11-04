@@ -119,18 +119,16 @@ namespace fastcode.parsing
                         return Token.Or;
                     case "not":
                         return Token.Not;
-                    case "from":
-                        return Token.From;
-                    case "to":
-                        return Token.To;
+                    case "in":
+                        return Token.In;
                     case "if":
                         return Token.If;
                     case "else":
                         return Token.Else;
                     case "elif":
                         return Token.Elif;
-                    case "count":
-                        return Token.Count;
+                    case "for":
+                        return Token.For;
                     case "while":
                         return Token.While;
                     case "forever":

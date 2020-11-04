@@ -24,14 +24,13 @@ namespace fastcode.runtime
         Return, //skips
     }
 
-    class CountStructure : ControlStructure
+    class ForStructure : ControlStructure
     {
-        public int CountTo { get; set; }
-        public int Count { get; set; }
-        public int CountFrom { get; set; }
+        public int currentIndex { get; set; }
+        public List<Value> Values { get; set; }
         public string IndexerIdentifier { get; set; }
 
-        public CountStructure() : base(ControlStructureType.Count)
+        public ForStructure() : base(ControlStructureType.Count)
         {
 
         }

@@ -82,6 +82,7 @@ namespace fastcode.runtime
             functionEvaluativeStack.Clear();
             CallStack.Push(new FunctionStructure("MAINSTRUCTURE"));
             BuiltInLibraries["flib.stdlib"].Install(ref builtInFunctions, this);
+            keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
             ReadNextToken();
             while(Exit == false) //program loop
             {
@@ -465,47 +466,67 @@ namespace fastcode.runtime
                         prevStructure = CallStack.Pop();
                     }
                     break;
-                case Token.Count:
-                    CountStructure countStructure = new CountStructure();
+                case Token.For:
+                    ForStructure forStructure = new ForStructure();
                     MatchToken(Token.Identifier);
-                    string id2 = lexer.TokenIdentifier;
+                    forStructure.IndexerIdentifier = lexer.TokenIdentifier;
                     ReadNextToken();
-                    MatchToken(Token.From);
-                    ReadNextToken();
-                    try
-                    {
-                        expr = EvaluateNextExpression();
-                        if(expr == null)
-                        {
-                            return;
-                        }
-                        countStructure.CountFrom = (int)expr.Double;
-                    }
-                    catch(InvalidCastException)
-                    {
-                        throw new Exception("Count ranges must be whole numbers.");
-                    }
-                    if(!GlobalVariables.ContainsKey(id2))
-                    {
-                        GlobalVariables.Add(id2, Value.Null);
-                    }
-                    GlobalVariables[id2] = new Value(countStructure.CountFrom);
-                    
-                    MatchToken(Token.To);
+                    MatchToken(Token.In);
                     ReadNextToken();
                     expr = EvaluateNextExpression();
-                    if (expr == null)
+                    if(expr == null)
                     {
                         return;
                     }
-                    countStructure.CountTo = (int)expr.Double;
-                    countStructure.Count = countStructure.CountFrom;
-                    CallStack.Push(countStructure);
-                    countStructure.IndexerIdentifier = id2;
+                    if(expr.Type == ValueType.Array)
+                    {
+                        forStructure.Values = expr.Array;
+                    }
+                    else if(expr.Type == ValueType.String)
+                    {
+                        forStructure.Values = new List<Value>();
+                        for (int i = 0; i < expr.String.Length; i++)
+                        {
+                            forStructure.Values.Add(new Value(expr.String[i]));
+                        }
+                    }
+                    else
+                    {
+                        throw new Exception("Fastcode can only iterate through an array or string.");
+                    }
+                    forStructure.currentIndex = 0;
+                    Stack<ControlStructure> searched2 = new Stack<ControlStructure>();
+                    while(CallStack.Count > 0)
+                    {
+                        searched2.Push(CallStack.Pop());
+                        if(searched2.Peek().GetType() == typeof(FunctionStructure))
+                        {
+                            FunctionStructure functionStructure1 = (FunctionStructure)searched2.Peek();
+                            if (forStructure.Values.Count > 0)
+                            {
+                                if (functionStructure1.LocalVariables.ContainsKey(forStructure.IndexerIdentifier))
+                                {
+                                    functionStructure1.LocalVariables[forStructure.IndexerIdentifier] = forStructure.Values[0];
+                                }
+                                else
+                                {
+                                    functionStructure1.LocalVariables.Add(forStructure.IndexerIdentifier, forStructure.Values[0]);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    while(searched2.Count > 0)
+                    {
+                        CallStack.Push(searched2.Pop());
+                    }
+
+                    CallStack.Push(forStructure);
                     ReadTillControlStructureStart();
-                    if(countStructure.Count >= countStructure.CountTo)
+                    if(forStructure.currentIndex >= forStructure.Values.Count)
                     {
                         SkipControlStructure();
+                        forStructure.RepeatStatus = ControlStructureRepeatStatus.Return;
                         prevStructure = CallStack.Pop();
                     }
                     break;
@@ -583,16 +604,40 @@ namespace fastcode.runtime
                             }
                         }
                     }
-                    else if(CallStack.Peek().GetType() == typeof(CountStructure))
+                    else if(CallStack.Peek().GetType() == typeof(ForStructure))
                     {
-                        CountStructure controlStructure = (CountStructure)CallStack.Pop();
-                        controlStructure.Count++;
-                        if (controlStructure.Count < controlStructure.CountTo)
+                        ForStructure forStructure2 = (ForStructure)CallStack.Pop();
+                        forStructure2.RepeatStatus = ControlStructureRepeatStatus.Return;
+                        forStructure2.currentIndex++;
+                        FunctionStructure functionStructure2 = null;
+                        Stack<ControlStructure> searched3 = new Stack<ControlStructure>();
+                        while (CallStack.Count > 0)
                         {
-                            GlobalVariables[controlStructure.IndexerIdentifier] = new Value(controlStructure.Count);
-                            CallStack.Push(controlStructure);
+                            searched3.Push(CallStack.Pop());
+                            if (searched3.Peek().GetType() == typeof(FunctionStructure))
+                            {
+                                functionStructure2 = (FunctionStructure)searched3.Peek();
+                            }
+                        }
+                        if (forStructure2.currentIndex < forStructure2.Values.Count)
+                        {
+                            functionStructure2.LocalVariables[forStructure2.IndexerIdentifier] = forStructure2.Values[forStructure2.currentIndex];
+                            forStructure2.RepeatStatus = ControlStructureRepeatStatus.Continue;
+                            while (searched3.Count > 0)
+                            {
+                                CallStack.Push(searched3.Pop());
+                            }
+                            CallStack.Push(forStructure2);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                             ReadNextToken();
+                        }
+                        else
+                        {
+                            functionStructure2.LocalVariables.Remove(forStructure2.IndexerIdentifier);
+                            while (searched3.Count > 0)
+                            {
+                                CallStack.Push(searched3.Pop());
+                            }
                         }
                     }
                     else if(CallStack.Peek().GetType() == typeof(FunctionStructure))

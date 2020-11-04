@@ -9,7 +9,7 @@ namespace fastcode.parsing
     public enum Token
     {
         Unkown, //The token has yet to be identified. The function will not return an Unkown Token, but throw an exception instread.
-
+        
         Identifier,  //stuff for refrences
         Value,
         Function,
@@ -19,13 +19,12 @@ namespace fastcode.parsing
         Stop,
         Assert,
         Import,
-        From,
-        To,
+        In,
 
         If,  //control structures
         Else,
         Elif, //it's a good keyword
-        Count,
+        For,
         While,
         Forever, //faster than while(true) because it doesn't have to evaluate true. Could save alot of resources 'specially if you loop alot.
 

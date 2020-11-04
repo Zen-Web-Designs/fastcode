@@ -28,11 +28,53 @@ namespace fastcode.flib
             functions.Add("len", Length);
             functions.Add("append", Append);
             functions.Add("del", Delete);
+            functions.Add("output", Output);
             functions.Add("out", Output);
-            functions.Add("in", Input);
+            functions.Add("input", Input);
             functions.Add("clone", Clone);
+            functions.Add("range", Range);
             OutputWriter = interpreter.Output;
             InputReader = interpreter.Input;
+        }
+
+        public static Value Range(List<Value> arguments)
+        {
+            if (arguments.Count == 2)
+            {
+                arguments.Add(new Value(1));
+            }
+            else if (arguments.Count != 3)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.Double || arguments[1].Type != runtime.ValueType.Double || arguments[2].Type != runtime.ValueType.Double)
+            {
+                throw new runtime.InvalidOperandTypeException();
+            }
+            List<Value> returnRange = new List<Value>();
+            if((arguments[0].Double > arguments[1].Double))
+            {
+                if(arguments[2].Double >= 0)
+                {
+                    throw new Exception("Invalid stepsize");
+                }
+                for (double i = arguments[0].Double; i > arguments[1].Double; i = i + arguments[2].Double)
+                {
+                    returnRange.Add(new Value(i));
+                }
+            }
+            else
+            {
+                if (arguments[2].Double <= 0)
+                {
+                    throw new Exception("Invalid stepsize");
+                }
+                for (double i = arguments[0].Double; i < arguments[1].Double; i = i + arguments[2].Double)
+                {
+                    returnRange.Add(new Value(i));
+                }
+            }
+            return new Value(returnRange);
         }
 
         public static Value Input(List<Value> arguments)

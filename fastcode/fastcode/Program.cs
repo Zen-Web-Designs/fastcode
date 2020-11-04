@@ -97,7 +97,6 @@ namespace fastcode
         static void run(string source)
         {
             Interpreter interpreter = new Interpreter(Console.Out,Console.In,source);
-            interpreter.Start();
             try
             {
                 interpreter.Start();

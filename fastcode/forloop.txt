@@ -1,0 +1,6 @@
+numbers = [1,2,3,4]
+for i in numbers
+{
+	out(i,endl)
+}
+out(i)
