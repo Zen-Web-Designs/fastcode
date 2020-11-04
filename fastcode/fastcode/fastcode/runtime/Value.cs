@@ -89,11 +89,7 @@ namespace fastcode.runtime
         public Value(List<Value> array)
         {
             this.Type = ValueType.Array;
-            this.Array = new List<Value>();
-            for (int i = 0; i < array.Count; i++)
-            {
-                this.Array.Add(array[i]);
-            }
+            this.Array = array;
         }
 
         public Value()

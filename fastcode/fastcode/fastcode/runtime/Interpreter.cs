@@ -23,7 +23,7 @@ namespace fastcode.runtime
             {"flib.stdlib", new StandardLibrary() }
         };
 
-        public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
+        public Dictionary<string, Value> Variables { get; private set; } //dictionaries are used for fast access
 
         public delegate Value BuiltInFunction(List<Value> arguments);
         Dictionary<string, BuiltInFunction> builtInFunctions;
@@ -56,7 +56,7 @@ namespace fastcode.runtime
             //initialize a bunch of crap
             this.Output = output;
             this.Input = input;
-            this.GlobalVariables = new Dictionary<string, Value>();
+            this.Variables = new Dictionary<string, Value>();
             this.builtInFunctions = new Dictionary<string, BuiltInFunction>();
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
@@ -64,10 +64,10 @@ namespace fastcode.runtime
             this.argumentEvaluativeQueue = new List<List<Value>>();
             this.argumentEvaluations = new Stack<int>();
             this.functionEvaluations = new Stack<int>();
-            GlobalVariables["null"] = Value.Null;
-            GlobalVariables["true"] = new Value(1);
-            GlobalVariables["false"] = new Value(0);
-            GlobalVariables["endl"] = new Value(Environment.NewLine);
+            Variables["null"] = Value.Null;
+            Variables["true"] = new Value(1);
+            Variables["false"] = new Value(0);
+            Variables["endl"] = new Value(Environment.NewLine);
             lexer = new Lexer(source);
             bracket_counter = 0;
             currentEvalArgument = 0;
@@ -80,8 +80,7 @@ namespace fastcode.runtime
             builtInFunctions.Clear();
             CallStack.Clear();
             functionEvaluativeStack.Clear();
-            CallStack.Push(new FunctionStructure("MAINSTRUCTURE"));
-            BuiltInLibraries["flib.stdlib"].Install(ref builtInFunctions, this);
+            CallStack.Push(new ControlStructure(ControlStructureType.MainProgram));
             ReadNextToken();
             while(Exit == false) //program loop
             {
@@ -137,9 +136,9 @@ namespace fastcode.runtime
                         {
                             return;
                         }
-                        if(GlobalVariables.ContainsKey(id))
+                        if(Variables.ContainsKey(id))
                         {
-                            GlobalVariables[id] = v1;
+                            Variables[id] = v1;
                             break;
                         }
                         else
@@ -151,17 +150,9 @@ namespace fastcode.runtime
                                 if (controlStructure.Type == ControlStructureType.Function)
                                 {
                                     FunctionStructure f = (FunctionStructure)controlStructure;
-                                    if(f.LocalVariables.ContainsKey(id))
+                                    if(f.Arguments.ContainsKey(id))
                                     {
-                                        f.LocalVariables[id] = v1;
-                                    }
-                                    else if(f.Identifier != "MAINSTRUCTURE")
-                                    {
-                                        f.LocalVariables.Add(id, v1);
-                                    }
-                                    else
-                                    {
-                                        GlobalVariables.Add(id, v1);
+                                        f.Arguments[id] = v1;
                                     }
                                     searched.Push(controlStructure);
                                     break;
@@ -173,6 +164,7 @@ namespace fastcode.runtime
                                 CallStack.Push(searched.Pop());
                             }
                         }
+                        Variables.Add(id, v1);
                         break;
                     }
                     else if(lastToken == Token.OpenParenthesis)
@@ -206,26 +198,25 @@ namespace fastcode.runtime
                         {
                             return;
                         }
-                        if (GlobalVariables.ContainsKey(id))
+                        if (Variables.ContainsKey(id))
                         {
-                            if (GlobalVariables[id].Type == ValueType.Array)
+                            if (Variables[id].Type == ValueType.Array)
                             {
-                                GlobalVariables[id].Array[(int)v.Double] = setval;
+                                Variables[id].Array[(int)v.Double] = setval;
                             }
-                            else if (GlobalVariables[id].Type == ValueType.String)
+                            else if (Variables[id].Type == ValueType.String)
                             {
                                 if (setval.Type != ValueType.Char)
                                 {
                                     throw new Exception("Strings can only index characters.");
                                 }
-                                char[] str = GlobalVariables[id].String.ToCharArray();
+                                char[] str = Variables[id].String.ToCharArray();
                                 str[(int)v.Double] = setval.Character;
-                                GlobalVariables[id] = new Value(new string(str));
+                                Variables[id] = new Value(new string(str));
                             }
                         }
                         else
                         {
-                            bool flag = false;
                             Stack<ControlStructure> searched = new Stack<ControlStructure>();
                             while (CallStack.Count != 0)
                             {
@@ -233,21 +224,19 @@ namespace fastcode.runtime
                                 if (controlStructure.Type == ControlStructureType.Function)
                                 {
                                     FunctionStructure f = (FunctionStructure)controlStructure;
-                                    if (f.LocalVariables[id].Type == ValueType.Array)
+                                    if (f.Arguments[id].Type == ValueType.Array)
                                     {
-                                        f.LocalVariables[id].Array[(int)v.Double] = setval;
-                                        flag = true;
+                                        f.Arguments[id].Array[(int)v.Double] = setval;
                                     }
-                                    else if (f.LocalVariables[id].Type == ValueType.String)
+                                    else if (f.Arguments[id].Type == ValueType.String)
                                     {
                                         if (setval.Type != ValueType.Char)
                                         {
                                             throw new Exception("Strings can only index characters.");
                                         }
-                                        char[] str = f.LocalVariables[id].String.ToCharArray();
+                                        char[] str = f.Arguments[id].String.ToCharArray();
                                         str[(int)v.Double] = setval.Character;
-                                        f.LocalVariables[id] = new Value(new string(str));
-                                        flag = true;
+                                        f.Arguments[id] = new Value(new string(str));
                                     }
                                     searched.Push(controlStructure);
                                     break;
@@ -257,10 +246,6 @@ namespace fastcode.runtime
                             while (searched.Count != 0)
                             {
                                 CallStack.Push(searched.Pop());
-                            }
-                            if(flag)
-                            {
-                                break;
                             }
                         }
                     }
@@ -278,7 +263,7 @@ namespace fastcode.runtime
                     }
                     break;
                 case Token.Break:
-                    if(CallStack.Peek().Type == ControlStructureType.Function)
+                    if(CallStack.Peek().Type == ControlStructureType.MainProgram || CallStack.Peek().Type == ControlStructureType.Function)
                     {
                         throw new UnexpectedKeyword(Token.Break);
                     }
@@ -287,7 +272,7 @@ namespace fastcode.runtime
                         int i = 0;
                         while (!(CallStack.Peek().Type == ControlStructureType.While || CallStack.Peek().Type == ControlStructureType.Forever || CallStack.Peek().Type == ControlStructureType.Count))
                         {
-                            if (CallStack.Peek().Type == ControlStructureType.Function)
+                            if (CallStack.Peek().Type == ControlStructureType.MainProgram || CallStack.Peek().Type == ControlStructureType.Function)
                             {
                                 throw new UnexpectedKeyword(Token.Break);
                             }
@@ -326,10 +311,6 @@ namespace fastcode.runtime
                         if(expr == null)
                         {
                             return;
-                        }
-                        else
-                        {
-                            ;
                         }
                         function = (FunctionStructure)CallStack.Pop();
                         function.Result = expr;
@@ -485,11 +466,11 @@ namespace fastcode.runtime
                     {
                         throw new Exception("Count ranges must be whole numbers.");
                     }
-                    if(!GlobalVariables.ContainsKey(id2))
+                    if(!Variables.ContainsKey(id2))
                     {
-                        GlobalVariables.Add(id2, Value.Null);
+                        Variables.Add(id2, Value.Null);
                     }
-                    GlobalVariables[id2] = new Value(countStructure.CountFrom);
+                    Variables[id2] = new Value(countStructure.CountFrom);
                     
                     MatchToken(Token.To);
                     ReadNextToken();
@@ -512,7 +493,7 @@ namespace fastcode.runtime
                 case Token.Function:
                     MatchToken(Token.Identifier);
                     string fid = lexer.TokenIdentifier;
-                    if(functions.ContainsKey(fid) || GlobalVariables.ContainsKey(fid) || builtInFunctions.ContainsKey(fid))
+                    if(functions.ContainsKey(fid) || Variables.ContainsKey(fid) || builtInFunctions.ContainsKey(fid))
                     {
                         throw new Exception("Identifiers must be unique");
                     }
@@ -529,7 +510,7 @@ namespace fastcode.runtime
                         }
                         else if(lastToken == Token.Identifier)
                         {
-                            if(argument_identifiers.Contains(lexer.TokenIdentifier) || GlobalVariables.ContainsKey(lexer.TokenIdentifier))
+                            if(argument_identifiers.Contains(lexer.TokenIdentifier) || Variables.ContainsKey(lexer.TokenIdentifier))
                             {
                                 throw new Exception("Argument identifiers must be unique.");
                             }
@@ -589,7 +570,7 @@ namespace fastcode.runtime
                         controlStructure.Count++;
                         if (controlStructure.Count < controlStructure.CountTo)
                         {
-                            GlobalVariables[controlStructure.IndexerIdentifier] = new Value(controlStructure.Count);
+                            Variables[controlStructure.IndexerIdentifier] = new Value(controlStructure.Count);
                             CallStack.Push(controlStructure);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                             ReadNextToken();
@@ -600,7 +581,7 @@ namespace fastcode.runtime
                         FunctionStructure finishedfunction = (FunctionStructure)CallStack.Pop();
                         finishedfunction.MarkAsFinished();
                         prevStructure = finishedfunction;
-                        lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
+                        //lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
                         //Tuple<int, List<Value>> currentEval = functionEvaluativeStack.Pop();
                         //currentEval.Item2.Add((Value)finishedfunction.Result);
                         //functionEvaluativeStack.Push(currentEval);
@@ -703,21 +684,7 @@ namespace fastcode.runtime
             int lid = lexer.Position.Index;
             currentFunction++;
 
-            FunctionStructure currentStructure = null;
-            Stack<ControlStructure> searched = new Stack<ControlStructure>();
-            while(CallStack.Count > 0)
-            {
-                searched.Push(CallStack.Pop());
-                if(searched.Peek().GetType() == typeof(FunctionStructure))
-                {
-                    currentStructure = (FunctionStructure)searched.Peek();
-                    break;
-                }
-            }
-            while(searched.Count > 0)
-            {
-                CallStack.Push(searched.Pop());
-            }
+            ControlStructure currentStructure = CallStack.Peek();
 
             if (!currentStructure.functionEvaluativeLocations.Contains(lid))
             {
@@ -740,7 +707,12 @@ namespace fastcode.runtime
             {
                 if (!keepargcount)
                 {
-                    if (!currentStructure.expressionStartLocations.Contains(lid))
+                    if (currentStructure.expressionStartLocations.Contains(lid))
+                    {
+                        currentEvalArgument = argumentEvaluations.Peek();
+                        currentFunction = functionEvaluations.Peek();
+                    }
+                    else
                     {
                         currentStructure.expressionStartLocations.Add(lid);
                         argumentEvaluations.Push(currentEvalArgument);
@@ -816,7 +788,7 @@ namespace fastcode.runtime
             }
             else if(lastToken == Token.Identifier)
             {
-                if(GlobalVariables.ContainsKey(lexer.TokenIdentifier)) //see if it's a variable
+                if(Variables.ContainsKey(lexer.TokenIdentifier)) //see if it's a variable
                 {
                     string vid = lexer.TokenIdentifier;
                     if (PeekNextToken() == Token.OpenBracket)
@@ -832,13 +804,13 @@ namespace fastcode.runtime
                         {
                             throw new Exception("Indicie's must be of type double.");
                         }
-                        if (GlobalVariables[vid].Type == ValueType.String)
+                        if (Variables[vid].Type == ValueType.String)
                         {
-                            val = new Value(GlobalVariables[vid].String[(int)v.Double]);
+                            val = new Value(Variables[vid].String[(int)v.Double]);
                         }
-                        else if (GlobalVariables[vid].Type == ValueType.Array)
+                        else if (Variables[vid].Type == ValueType.Array)
                         {
-                            val = GlobalVariables[vid].Array[(int)v.Double];
+                            val = Variables[vid].Array[(int)v.Double];
                         }
                         else
                         {
@@ -848,7 +820,7 @@ namespace fastcode.runtime
                     }
                     else
                     {
-                        val = GlobalVariables[lexer.TokenIdentifier];
+                        val = Variables[lexer.TokenIdentifier];
                     }
                 }
                 else if(functions.ContainsKey(lexer.TokenIdentifier) || builtInFunctions.ContainsKey(lexer.TokenIdentifier)) //see if it's a function
@@ -947,7 +919,7 @@ namespace fastcode.runtime
                         if(controlStructure.Type == ControlStructureType.Function)
                         {
                             FunctionStructure function = (FunctionStructure)controlStructure;
-                            if(function.LocalVariables.ContainsKey(lexer.TokenIdentifier))
+                            if(function.Arguments.ContainsKey(lexer.TokenIdentifier))
                             {
                                 string fid = lexer.TokenIdentifier;
                                 if (PeekNextToken() == Token.OpenBracket)
@@ -963,13 +935,13 @@ namespace fastcode.runtime
                                     {
                                         throw new Exception("Indicie's must be of type double.");
                                     }
-                                    if (function.LocalVariables[fid].Type == ValueType.String)
+                                    if (function.Arguments[fid].Type == ValueType.String)
                                     {
-                                        val = new Value(function.LocalVariables[fid].String[(int)v.Double]);
+                                        val = new Value(function.Arguments[fid].String[(int)v.Double]);
                                     }
-                                    else if (function.LocalVariables[fid].Type == ValueType.Array)
+                                    else if (function.Arguments[fid].Type == ValueType.Array)
                                     {
-                                        val = function.LocalVariables[fid].Array[(int)v.Double];
+                                        val = function.Arguments[fid].Array[(int)v.Double];
                                     }
                                     else
                                     {
@@ -979,7 +951,7 @@ namespace fastcode.runtime
                                 }
                                 else
                                 {
-                                    val = function.LocalVariables[fid];
+                                    val = function.Arguments[fid];
                                 }
                                 searched.Push(function);
                                 break;

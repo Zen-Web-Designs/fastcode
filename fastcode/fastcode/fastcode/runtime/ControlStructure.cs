@@ -9,6 +9,7 @@ namespace fastcode.runtime
 {
     enum ControlStructureType
     {
+        MainProgram,
         If,
         Elif,
         Else,
@@ -51,21 +52,17 @@ namespace fastcode.runtime
     {
         public string Identifier { get; private set; }
         List<string> argument_identifiers;
-        public Dictionary<string, Value> LocalVariables { get; private set; }
+        public Dictionary<string, Value> Arguments { get; private set; }
         public int ExpectedArguments { get; private set; }
         public bool FinishedExecuting { get; private set; }
         public Marker ReturnPosition { get; private set; }
-        public HashSet<int> functionEvaluativeLocations;
-        public HashSet<int> expressionStartLocations;
 
         public FunctionStructure(string identifier) : base(ControlStructureType.Function)
         {
             this.Identifier = identifier;
-            LocalVariables = new Dictionary<string, Value>();
+            Arguments = new Dictionary<string, Value>();
             ExpectedArguments = 0;
             RepeatStatus = ControlStructureRepeatStatus.Return;
-            this.functionEvaluativeLocations = new HashSet<int>();
-            this.expressionStartLocations = new HashSet<int>();
             MarkAsExecuting();
         }
 
@@ -73,7 +70,7 @@ namespace fastcode.runtime
         {
             FunctionStructure functionStructure = new FunctionStructure(Identifier);
             functionStructure.SetArgumentParameters(argument_identifiers);
-            functionStructure.SetArguments(LocalVariables.Values.ToList());
+            functionStructure.SetArguments(Arguments.Values.ToList());
             if(FinishedExecuting)
             {
                 functionStructure.MarkAsFinished();
@@ -92,7 +89,7 @@ namespace fastcode.runtime
             ExpectedArguments = argument_identifiers.Count;
             for (int i = 0; i < argument_identifiers.Count; i++)
             {
-                LocalVariables.Add(argument_identifiers[i], Value.Null);
+                Arguments.Add(argument_identifiers[i], Value.Null);
             }
         }
 
@@ -104,7 +101,7 @@ namespace fastcode.runtime
             }
             for (int i = 0; i < ExpectedArguments; i++)
             {
-                LocalVariables[argument_identifiers[i]] = arguments[i];
+                Arguments[argument_identifiers[i]] = arguments[i];
             }
         }
 
@@ -113,10 +110,10 @@ namespace fastcode.runtime
             StartPosition = null;
             FinishedExecuting = false;
             Result = null;
-            LocalVariables.Clear();
+            Arguments.Clear();
             for (int i = 0; i < ExpectedArguments; i++)
             {
-                LocalVariables.Add(argument_identifiers[i], Value.Null);
+                Arguments.Add(argument_identifiers[i], Value.Null);
             }
         }
 
@@ -138,6 +135,8 @@ namespace fastcode.runtime
 
     class ControlStructure
     {
+        public HashSet<int> functionEvaluativeLocations;
+        public HashSet<int> expressionStartLocations;
         public ControlStructureRepeatStatus RepeatStatus { get; set; }
         public ControlStructureType Type { get; private set; }
         public object Result { get; set; }
@@ -148,6 +147,8 @@ namespace fastcode.runtime
         {
             this.Type = type;
             this.RepeatStatus = ControlStructureRepeatStatus.Continue;
+            this.functionEvaluativeLocations = new HashSet<int>();
+            this.expressionStartLocations = new HashSet<int>();
         }
     }
 }

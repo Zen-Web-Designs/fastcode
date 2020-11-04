@@ -1,0 +1,6 @@
+function recurse(i)
+{
+	out(i,endl)
+	recurse(i+1)
+}
+recurse(0)

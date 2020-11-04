@@ -1,0 +1,22 @@
+import "flib.stdlib"
+array = [5,1,4,2,8]
+function sort(tosort)
+{
+	flag = 0
+	count i from 0 to len(tosort)-1
+	{
+		if tosort[i] > tosort[i+1]
+		{
+			flag = 1
+			temp = tosort[i]
+			tosort[i] = tosort[i+1]
+			tosort[i+1] = temp
+		}
+	}
+	if flag == 1
+	{
+		return sort(tosort)
+	}
+	return tosort
+}
+out(sort(array))
