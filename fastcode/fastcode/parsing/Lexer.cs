@@ -15,8 +15,8 @@ namespace fastcode.parsing
         private char lastChar; //last character read from the lexer stream
 
         public Marker Position { get; private set; }
-        public string TokenIdentifier { get; private set; }
-        public Value TokenValue { get; private set; }
+        public string TokenIdentifier { get;  set; }
+        public Value TokenValue { get;  set; }
 
         public Lexer(string source)
         {

@@ -1,0 +1,6 @@
+function echo(text)
+{
+	out(text)
+	return text
+}
+echo(echo(echo("hi!")))

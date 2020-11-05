@@ -16,14 +16,6 @@ namespace fastcode.runtime
         }
     }
 
-    public class UnexpectedKeyword : Exception
-    {
-        public UnexpectedKeyword(Token keyword) : base("FastCode did not expect the keyword \"" + keyword + "\".")
-        {
-
-        }
-    }
-
     public class InvalidIdentifierException : Exception
     {
         public InvalidIdentifierException() : base("The identifier refrenced does not exist.")
@@ -34,7 +26,12 @@ namespace fastcode.runtime
 
     public class UnexpectedStatementException : Exception
     {
-        public UnexpectedStatementException(string expected, string statement) : base("FastCode expected " + expected + ", but instead got " + statement)
+        public UnexpectedStatementException(string expected, string statement) : base("FastCode expected \"" + expected + "\", but instead got \"" + statement+"\".")
+        {
+
+        }
+
+        public UnexpectedStatementException(string statement): base("FastCode did not expect the keyword \"" + statement + "\".")
         {
 
         }

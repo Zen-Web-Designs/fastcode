@@ -8,7 +8,10 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testcases", "testcases", "{158FEE82-9C94-4117-9144-D3222533E9E4}"
 	ProjectSection(SolutionItems) = preProject
 		forloop.txt = forloop.txt
+		function_arguments.txt = function_arguments.txt
+		function_results.txt = function_results.txt
 		recursion.txt = recursion.txt
+		recursive_return.txt = recursive_return.txt
 	EndProjectSection
 EndProject
 Global

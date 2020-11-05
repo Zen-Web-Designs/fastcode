@@ -97,19 +97,20 @@ namespace fastcode
         static void run(string source)
         {
             Interpreter interpreter = new Interpreter(Console.Out,Console.In,source);
-            try
-            {
-                interpreter.Start();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1) + ", INDEX: " + interpreter.Position.Index + ". The program has been terminated.");
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\"" + Lines[interpreter.Position.Row] + "\"\n");
-                Console.ForegroundColor = defaultColor;
-                Console.WriteLine(e.GetType());
-                Console.WriteLine(e.Message);
-            }
+            interpreter.Start();
+            //try
+            //{
+            //    interpreter.Start();
+            //}
+            //catch (Exception e)
+            //{
+            //    Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1) + ", INDEX: " + interpreter.Position.Index + ". The program has been terminated.");
+            //    Console.ForegroundColor = ConsoleColor.Red;
+            //    Console.WriteLine("\"" + Lines[interpreter.Position.Row] + "\"\n");
+            //    Console.ForegroundColor = defaultColor;
+            //    Console.WriteLine(e.GetType());
+            //    Console.WriteLine(e.Message);
+            //}
         }
     }
 }

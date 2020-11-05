@@ -1,0 +1,5 @@
+function inside(t)
+{
+	return t
+}
+out(inside("hi") + inside("bye") + inside(inside(inside("inside"))), inside(endl))
