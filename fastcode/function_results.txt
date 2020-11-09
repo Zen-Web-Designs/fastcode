@@ -2,4 +2,4 @@ function inside(t)
 {
 	return t
 }
-out(inside("hi") + inside("bye") + inside(inside(inside("inside"))), inside(endl))
+out(inside(inside("hi")) + inside("bye") + inside(inside(inside("inside"))), inside(endl))

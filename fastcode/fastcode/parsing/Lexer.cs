@@ -22,7 +22,14 @@ namespace fastcode.parsing
         {
             this.source = source;
             Position = new Marker(0, 0, 0);
-            lastChar = source[0];
+            if (source.Length > 0)
+            {
+                lastChar = source[0];
+            }
+            else
+            {
+                lastChar = EOF;
+            }
         }
 
         //shifts the cursor position
@@ -32,6 +39,10 @@ namespace fastcode.parsing
             if (marker.Index < source.Length)
             {
                 lastChar = source[marker.Index];
+            }
+            else
+            {
+                lastChar = EOF;
             }
         }
         
@@ -131,8 +142,6 @@ namespace fastcode.parsing
                         return Token.For;
                     case "while":
                         return Token.While;
-                    case "forever":
-                        return Token.Forever;
                     case "function":
                         return Token.Function;
                     case "break":
@@ -165,15 +174,8 @@ namespace fastcode.parsing
                 {
                     numstr += lastChar;
                 }
-                try
-                {
-                    TokenValue = new Value(double.Parse(numstr));
-                    return Token.Value;
-                }
-                catch
-                {
-                    throw new ParsingFormatException(numstr);
-                }
+                TokenValue = new Value(double.Parse(numstr));
+                return Token.Value;
             }
             else
             {
@@ -217,6 +219,15 @@ namespace fastcode.parsing
                         token = Token.Asterisk;
                         break;
                     case '/':
+                        if(Peek() == '/')
+                        {
+                            while(lastChar != '\n')
+                            {
+                                ReadChar();
+                            }
+                            ReadChar();
+                            return ReadNextToken(); 
+                        }
                         token = Token.Slash;
                         break;
                     case '^':
@@ -224,6 +235,20 @@ namespace fastcode.parsing
                         break;
                     case '%':
                         token = Token.Modulous;
+                        break;
+                    case '&':
+                        if(Peek() == '&')
+                        {
+                            ReadChar();
+                            token = Token.And;
+                        }
+                        break;
+                    case '|':
+                        if (Peek() == '|')
+                        {
+                            ReadChar();
+                            token = Token.Or;
+                        }
                         break;
                     case '=':
                         if(Peek() == '=')

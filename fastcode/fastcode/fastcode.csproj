@@ -44,7 +44,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="flib\Linq.cs" />
+    <Compile Include="flib\MathLibrary.cs" />
     <Compile Include="flib\StandardLibrary.cs" />
+    <Compile Include="flib\WinInterop.cs" />
     <Compile Include="runtime\ControlStructure.cs" />
     <Compile Include="runtime\Errors.cs" />
     <Compile Include="runtime\Interpreter.cs" />

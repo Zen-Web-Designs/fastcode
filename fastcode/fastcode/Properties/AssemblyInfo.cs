@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("fastcode")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("A perfect blend of C, Java, and Python tailored for those who desire a simple yet powerful programming language.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("fastcode")]

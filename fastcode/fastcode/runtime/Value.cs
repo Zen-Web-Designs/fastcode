@@ -19,6 +19,8 @@ namespace fastcode.runtime
     public class Value
     {
         public static Value Null { get { return new Value(); } } //NULL will be defined as it's own type
+        public static Value True { get { return new Value(1); } }
+        public static Value False { get { return new Value(0); } }
 
         public ValueType Type { get; private set; }
 
@@ -151,8 +153,10 @@ namespace fastcode.runtime
             {
                 if (a.Type == ValueType.Double)
                     return new Value(a.Double + b.Double);
-                else if(a.Type == ValueType.String)
+                else if (a.Type == ValueType.String)
                     return new Value(a.String + b.String);
+                else if (a.Type == ValueType.Char)
+                    return new Value((char)(a.Character + b.Character));
             }
             else if (token == Token.Equals)
             {

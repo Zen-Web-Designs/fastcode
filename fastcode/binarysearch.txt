@@ -1,0 +1,25 @@
+function search(arr, l, r, x)
+{
+	if r >= 1
+	{
+		mid = floor(l + (r-l)/2)
+		if arr[mid] == x
+		{
+			return mid
+		}
+		elif arr[mid] > x
+		{
+			return search(arr,l, mid-1,x)
+		}
+		else
+		{
+			return search(arr,mid+1,r,x)
+		}
+	}
+	else
+	{
+		return -1
+	}
+}
+tosearch = [0,1,3,4,7,8,9,11,23,45]
+out(search(tosearch,0,len(tosearch)-1,23)) 

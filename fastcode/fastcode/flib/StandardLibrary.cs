@@ -8,7 +8,7 @@ using fastcode.runtime;
 
 namespace fastcode.flib
 {
-    abstract class Library
+    public abstract class Library
     {
         public abstract void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter);
     }
@@ -20,14 +20,12 @@ namespace fastcode.flib
 
         public override void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter)
         {
-            functions.Add("isd", IsDouble);
-            functions.Add("iss", IsString);
+            functions.Add("split", Split);
+            functions.Add("type", GetTypeID);
             functions.Add("stod", StringToDouble);
             functions.Add("dtos", DoubleToString);
-            functions.Add("tochararray", ToCharArray);
+            functions.Add("toCharArray", ToCharArray);
             functions.Add("len", Length);
-            functions.Add("append", Append);
-            functions.Add("del", Delete);
             functions.Add("output", Output);
             functions.Add("out", Output);
             functions.Add("input", Input);
@@ -35,6 +33,25 @@ namespace fastcode.flib
             functions.Add("range", Range);
             OutputWriter = interpreter.Output;
             InputReader = interpreter.Input;
+        }
+
+        public static Value Split(List<Value> arguments)
+        {
+            if (arguments.Count != 2)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String || arguments[1].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            string[] tokens = arguments[0].String.Split(new string[] { arguments[1].String }, StringSplitOptions.RemoveEmptyEntries);
+            Value toret = new Value(new List<Value>());
+            foreach(string tok in tokens)
+            {
+                toret.Array.Add(new Value(tok));
+            }
+            return toret;
         }
 
         public static Value Range(List<Value> arguments)
@@ -49,14 +66,14 @@ namespace fastcode.flib
             }
             if (arguments[0].Type != runtime.ValueType.Double || arguments[1].Type != runtime.ValueType.Double || arguments[2].Type != runtime.ValueType.Double)
             {
-                throw new runtime.InvalidOperandTypeException();
+                throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             List<Value> returnRange = new List<Value>();
             if((arguments[0].Double > arguments[1].Double))
             {
                 if(arguments[2].Double >= 0)
                 {
-                    throw new Exception("Invalid stepsize");
+                    throw new Exception("Invalid stepsize. Perhaps you should the switch start and stop values?");
                 }
                 for (double i = arguments[0].Double; i > arguments[1].Double; i = i + arguments[2].Double)
                 {
@@ -67,7 +84,7 @@ namespace fastcode.flib
             {
                 if (arguments[2].Double <= 0)
                 {
-                    throw new Exception("Invalid stepsize");
+                    throw new Exception("Invalid stepsize. Perhaps you should switch the start and stop values?");
                 }
                 for (double i = arguments[0].Double; i < arguments[1].Double; i = i + arguments[2].Double)
                 {
@@ -75,6 +92,23 @@ namespace fastcode.flib
                 }
             }
             return new Value(returnRange);
+        }
+
+        public static Value Length(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type == runtime.ValueType.String)
+            {
+                return new Value(arguments[0].String.Length);
+            }
+            else if (arguments[0].Type == runtime.ValueType.Array)
+            {
+                return new Value(arguments[0].Array.Count);
+            }
+            throw new Exception("An invalid argument type has been passed into a built in function.");
         }
 
         public static Value Input(List<Value> arguments)
@@ -95,13 +129,13 @@ namespace fastcode.flib
             return Value.Null;
         }
 
-        public static Value IsDouble(List<Value> arguments)
+        public static Value GetTypeID(List<Value> arguments)
         {
             if (arguments.Count != 1)
             {
                 throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
             }
-            return (arguments[0].Type == runtime.ValueType.Double ? new Value(1) : new Value(0));
+            return new Value("fastcode.types."+arguments[0].Type);
         }
 
         public static Value ToCharArray(List<Value> arguments)
@@ -112,7 +146,7 @@ namespace fastcode.flib
             }
             if (arguments[0].Type != runtime.ValueType.String)
             {
-                throw new runtime.InvalidOperandTypeException();
+                throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             List<Value> value = new List<Value>();
             for (int i = 0; i < arguments[0].String.Length; i++)
@@ -120,15 +154,6 @@ namespace fastcode.flib
                 value.Add(new Value(arguments[0].String[i]));
             }
             return new Value(value);
-        }
-
-        public static Value IsString(List<Value> arguments)
-        {
-            if (arguments.Count != 1)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            return (arguments[0].Type == runtime.ValueType.String ? new Value(1) : new Value(0));
         }
 
         public static Value StringToDouble(List<Value> arguments)
@@ -139,9 +164,16 @@ namespace fastcode.flib
             }
             if(arguments[0].Type != runtime.ValueType.String)
             {
-                throw new runtime.InvalidOperandTypeException();
+                throw new Exception("An invalid argument type has been passed into a built in function.");
             }
-            return new Value(double.Parse(arguments[0].String));
+            try
+            {
+                return new Value(double.Parse(arguments[0].String));
+            }
+            catch
+            {
+                return Value.Null;
+            }
         }
 
         public static Value DoubleToString(List<Value> arguments)
@@ -152,55 +184,9 @@ namespace fastcode.flib
             }
             if (arguments[0].Type != runtime.ValueType.Double)
             {
-                throw new runtime.InvalidOperandTypeException();
+                throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             return new Value(arguments[0].Double.ToString());
-        }
-
-        public static Value Length(List<Value> arguments)
-        {
-            if (arguments.Count != 1)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            if (arguments[0].Type == runtime.ValueType.String)
-            {
-                return new Value(arguments[0].String.Length);
-            }
-            else if (arguments[0].Type == runtime.ValueType.Array)
-            {
-                return new Value(arguments[0].Array.Count);
-            }
-            throw new runtime.InvalidOperandTypeException();
-        }
-
-        public static Value Append(List<Value> arguments)
-        {
-            if (arguments.Count != 2)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            if (arguments[0].Type != runtime.ValueType.Array)
-            {
-                throw new runtime.InvalidOperandTypeException();
-            }
-            arguments[0].Array.Add(arguments[1]);
-            return arguments[1];
-        }
-
-        public static Value Delete(List<Value> arguments)
-        {
-            if (arguments.Count != 2)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            if (arguments[0].Type != runtime.ValueType.Array || arguments[1].Type != runtime.ValueType.Double)
-            {
-                throw new runtime.InvalidOperandTypeException();
-            }
-            Value value = arguments[0].Array[(int)arguments[1].Double];
-            arguments[0].Array.RemoveAt((int)arguments[1].Double);
-            return value;
         }
 
         public Value Clone(List<Value> arguments)
@@ -211,7 +197,7 @@ namespace fastcode.flib
             }
             if (arguments[0].Type != runtime.ValueType.Array)
             {
-                throw new runtime.InvalidOperandTypeException();
+                throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             return Clone(arguments[0]);
         }

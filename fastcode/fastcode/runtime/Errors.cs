@@ -7,18 +7,9 @@ using fastcode.parsing;
 
 namespace fastcode.runtime
 {
-
     public class AssertionFailedException : Exception
     {
         public AssertionFailedException() : base("A debug assertion has failed.")
-        {
-
-        }
-    }
-
-    public class InvalidIdentifierException : Exception
-    {
-        public InvalidIdentifierException() : base("The identifier refrenced does not exist.")
         {
 
         }
@@ -56,14 +47,6 @@ namespace fastcode.runtime
     public class UnidentifiedTokenExcepion : Exception
     {
         public UnidentifiedTokenExcepion() : base("FastCode is unable to identify the following token.")
-        {
-
-        }
-    }
-
-    public class ParsingFormatException : Exception
-    {
-        public ParsingFormatException(string parsestring) : base("FastCode cannot parse \"" + parsestring + "\" and convert it to the requested type.")
         {
 
         }

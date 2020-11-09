@@ -26,7 +26,6 @@ namespace fastcode.parsing
         Elif, //it's a good keyword
         For,
         While,
-        Forever, //faster than while(true) because it doesn't have to evaluate true. Could save alot of resources 'specially if you loop alot.
 
         Newline,    //control tokens
         Semicolon,

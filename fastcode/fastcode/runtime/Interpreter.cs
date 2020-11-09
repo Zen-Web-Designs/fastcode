@@ -20,8 +20,11 @@ namespace fastcode.runtime
 
         Dictionary<string, Library> BuiltInLibraries = new Dictionary<string, Library>()
         {
-            {"flib.stdlib", new StandardLibrary() }
-        };
+            {"flib.stdlib", new StandardLibrary() },
+            {"flib.mathlib",new MathLibrary() },
+            {"flib.linq", new Linq() },
+            {"flib.wininterop", new WinInterop() }
+        }; //built in libraries allow for interoperability between fastcode and csharp
 
         public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
 
@@ -32,20 +35,12 @@ namespace fastcode.runtime
         Lexer lexer; //parsing aides
         Token prevToken;
         Token lastToken;
-        int bracket_counter; //counts how "deep" you go. Not meant as a dirty joke 
         private Marker expressionMarker; //counts the start of the expresion
         private Marker keywordMarker; //start of keyword
 
         //this makes up our "call stack" for control structures. Also includes whiles and elses and that stuff rather than functions
         Stack<ControlStructure> CallStack;
         ControlStructure prevStructure;
-
-        List<Tuple<int, List<Value>>> functionEvaluativeStack; //used when evaluating expressions that call functions
-        List<List<Value>> argumentEvaluativeQueue;
-        Stack<int> argumentEvaluations;
-        Stack<int> functionEvaluations;
-        int currentEvalArgument;
-        int currentFunction;
 
         public bool Exit { get; private set; } //exit condition - private set so the program cannot be aborted from the outside without going through an exit function
 
@@ -60,18 +55,7 @@ namespace fastcode.runtime
             this.builtInFunctions = new Dictionary<string, BuiltInFunction>();
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
-            this.functionEvaluativeStack = new List<Tuple<int, List<Value>>>();
-            this.argumentEvaluativeQueue = new List<List<Value>>();
-            this.argumentEvaluations = new Stack<int>();
-            this.functionEvaluations = new Stack<int>();
-            GlobalVariables["null"] = Value.Null;
-            GlobalVariables["true"] = new Value(1);
-            GlobalVariables["false"] = new Value(0);
-            GlobalVariables["endl"] = new Value(Environment.NewLine);
             lexer = new Lexer(source);
-            bracket_counter = 0;
-            currentEvalArgument = 0;
-            currentFunction = -1;
         }
 
         //starts the program
@@ -79,15 +63,23 @@ namespace fastcode.runtime
         {
             builtInFunctions.Clear();
             CallStack.Clear();
-            functionEvaluativeStack.Clear();
+            GlobalVariables.Clear();
             CallStack.Push(new FunctionStructure("MAINSTRUCTURE"));
             BuiltInLibraries["flib.stdlib"].Install(ref builtInFunctions, this);
-            keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
-            ReadNextToken();
+            BuiltInLibraries["flib.mathlib"].Install(ref builtInFunctions, this);
+            BuiltInLibraries["flib.linq"].Install(ref builtInFunctions, this);
+            GlobalVariables["null"] = Value.Null;
+            GlobalVariables["true"] = Value.True;
+            GlobalVariables["false"] = Value.False;
+            GlobalVariables["endl"] = new Value(Environment.NewLine);
+            GlobalVariables["doubleType"] = new Value("fastcode.types." + ValueType.Double);
+            GlobalVariables["stringType"] = new Value("fastcode.types." + ValueType.String);
+            GlobalVariables["arrayType"] = new Value("fastcode.types." + ValueType.Array);
             while(Exit == false) //program loop
             {
-                while(lastToken == Token.Newline)
+                while (lastToken == Token.Newline || lastToken == Token.Unkown)
                 {
+                    keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
                     ReadNextToken();
                 }
                 if(lastToken == Token.EndOfFile || CallStack.Count == 0)
@@ -96,7 +88,6 @@ namespace fastcode.runtime
                     break;
                 }
                 ExecuteNextStatement(); //execute a statement
-                keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
 
                 //expect an EOF or \n at the end of a line
                 if (lastToken != Token.Newline && lastToken != Token.EndOfFile)
@@ -114,6 +105,61 @@ namespace fastcode.runtime
             {
                 throw new UnexpectedStatementException(token.ToString(), lastToken.ToString());
             }
+        }
+
+        FunctionStructure GetCurrentFunction()
+        {
+            Stack<ControlStructure> searched = new Stack<ControlStructure>();
+            FunctionStructure function = null;
+            while (CallStack.Count > 0)
+            {
+                searched.Push(CallStack.Pop());
+                if (searched.Peek().GetType() == typeof(FunctionStructure))
+                {
+                    function = (FunctionStructure)searched.Peek();
+                    break;
+                }
+            }
+            while (searched.Count > 0)
+            {
+                CallStack.Push(searched.Pop());
+            }
+            return function;
+        }
+
+        public void ReadTillControlStructureStart(bool markposition=true)
+        {
+            while (lastToken != Token.OpenBrace)
+            {
+                ReadNextToken();
+            }
+            ReadNextToken();
+
+            if(markposition)
+            {
+                ControlStructure current = CallStack.Pop();
+                current.StartPosition = new Marker(lexer.Position.Index - 1, lexer.Position.Collumn, lexer.Position.Row);
+                CallStack.Push(current);
+            }
+        }
+
+        public void SkipControlStructure(int offset = 0, bool readtok=false)
+        {
+            int braceCount = offset; //skip open params, close params till it balances out
+            do
+            {
+                if (lastToken == Token.OpenBrace)
+                {
+                    braceCount++;
+                }
+                else if (lastToken == Token.CloseBrace)
+                {
+                    braceCount--;
+                }
+                if (braceCount < 0 && readtok) { break;  }
+                ReadNextToken();
+            }
+            while (braceCount >= 0);
         }
 
         //executes a single statement
@@ -145,33 +191,18 @@ namespace fastcode.runtime
                         }
                         else
                         {
-                            Stack<ControlStructure> searched = new Stack<ControlStructure>();
-                            while (CallStack.Count != 0)
+                            FunctionStructure f = GetCurrentFunction();
+                            if (f.LocalVariables.ContainsKey(id))
                             {
-                                ControlStructure controlStructure = CallStack.Pop();
-                                if (controlStructure.Type == ControlStructureType.Function)
-                                {
-                                    FunctionStructure f = (FunctionStructure)controlStructure;
-                                    if(f.LocalVariables.ContainsKey(id))
-                                    {
-                                        f.LocalVariables[id] = v1;
-                                    }
-                                    else if(f.Identifier != "MAINSTRUCTURE")
-                                    {
-                                        f.LocalVariables.Add(id, v1);
-                                    }
-                                    else
-                                    {
-                                        GlobalVariables.Add(id, v1);
-                                    }
-                                    searched.Push(controlStructure);
-                                    break;
-                                }
-                                searched.Push(controlStructure);
+                                f.LocalVariables[id] = v1;
                             }
-                            while (searched.Count != 0)
+                            else if (f.Identifier != "MAINSTRUCTURE")
                             {
-                                CallStack.Push(searched.Pop());
+                                f.LocalVariables.Add(id, v1);
+                            }
+                            else
+                            {
+                                GlobalVariables.Add(id, v1);
                             }
                         }
                         break;
@@ -182,7 +213,7 @@ namespace fastcode.runtime
                         {
                             lexer.ShiftCurrentPosition(keywordMarker);
                             ReadNextToken();
-                            var n = EvaluateNextExpression();
+                            EvaluateNextExpression();
                             return;
                         }
                     }
@@ -226,46 +257,26 @@ namespace fastcode.runtime
                         }
                         else
                         {
-                            bool flag = false;
-                            Stack<ControlStructure> searched = new Stack<ControlStructure>();
-                            while (CallStack.Count != 0)
+                            FunctionStructure f = GetCurrentFunction();
+                            if (f.LocalVariables[id].Type == ValueType.Array)
                             {
-                                ControlStructure controlStructure = CallStack.Pop();
-                                if (controlStructure.Type == ControlStructureType.Function)
+                                f.LocalVariables[id].Array[(int)v.Double] = setval;
+                                break;
+                            }
+                            else if (f.LocalVariables[id].Type == ValueType.String)
+                            {
+                                if (setval.Type != ValueType.Char)
                                 {
-                                    FunctionStructure f = (FunctionStructure)controlStructure;
-                                    if (f.LocalVariables[id].Type == ValueType.Array)
-                                    {
-                                        f.LocalVariables[id].Array[(int)v.Double] = setval;
-                                        flag = true;
-                                    }
-                                    else if (f.LocalVariables[id].Type == ValueType.String)
-                                    {
-                                        if (setval.Type != ValueType.Char)
-                                        {
-                                            throw new Exception("Strings can only index characters.");
-                                        }
-                                        char[] str = f.LocalVariables[id].String.ToCharArray();
-                                        str[(int)v.Double] = setval.Character;
-                                        f.LocalVariables[id] = new Value(new string(str));
-                                        flag = true;
-                                    }
-                                    searched.Push(controlStructure);
-                                    break;
+                                    throw new Exception("Strings can only index characters.");
                                 }
-                                searched.Push(controlStructure);
-                            }
-                            while (searched.Count != 0)
-                            {
-                                CallStack.Push(searched.Pop());
-                            }
-                            if(flag)
-                            {
+                                char[] str = f.LocalVariables[id].String.ToCharArray();
+                                str[(int)v.Double] = setval.Character;
+                                f.LocalVariables[id] = new Value(new string(str));
                                 break;
                             }
                         }
                     }
-                    throw new Exception("Identifiers cannot stand alone without a keyword.");
+                    throw new Exception("Identifier \""+id+"\" cannot stand alone without a keyword.");
                 case Token.Assert:
                     MatchToken(Token.OpenParenthesis);
                     Value expr = EvaluateNextExpression();
@@ -279,51 +290,36 @@ namespace fastcode.runtime
                     }
                     break;
                 case Token.Break:
-                    if(CallStack.Peek().Type == ControlStructureType.Function)
+                    int i = 0;
+                    while (!(CallStack.Peek().GetType() == typeof(WhileStructure) || CallStack.Peek().GetType() == typeof(ForStructure)))
                     {
-                        throw new UnexpectedStatementException(Token.Break.ToString());
-                    }
-                    else
-                    {
-                        int i = 0;
-                        while (!(CallStack.Peek().Type == ControlStructureType.While || CallStack.Peek().Type == ControlStructureType.Forever || CallStack.Peek().Type == ControlStructureType.Count))
+                        if (CallStack.Peek().Type == ControlStructureType.Function)
                         {
-                            if (CallStack.Peek().Type == ControlStructureType.Function)
-                            {
-                                throw new UnexpectedStatementException(Token.Break.ToString());
-                            }
-                            i++;
-                            prevStructure = CallStack.Pop();
+                            throw new UnexpectedStatementException(Token.Break.ToString());
                         }
-                        ControlStructure current66 = CallStack.Pop();
-                        current66.RepeatStatus = ControlStructureRepeatStatus.Return;
-                        prevStructure = current66;
-                        SkipControlStructure(-i);
-                        
-                        break;
+                        i++;
+                        prevStructure = CallStack.Pop();
                     }
+                    prevStructure = CallStack.Pop();
+                    SkipControlStructure(i);
+                    break;
                 case Token.Return:
                     FunctionStructure function = null;
                     int j = 0;
                     while (CallStack.Count != 0)
                     {
-                        ControlStructure structure = CallStack.Pop();
-                        if(structure.Type == ControlStructureType.Function)
+                        if(CallStack.Peek().Type == ControlStructureType.Function)
                         {
-                            function = (FunctionStructure)structure;
+                            function = (FunctionStructure)CallStack.Pop();
+                            if(function.Identifier == "MAINSTRUCTURE")
+                            {
+                                throw new Exception("Only functions may return values.");
+                            }
                             break;
                         }
+                        CallStack.Pop();
                         j++;
                     }
-                    if(function == null)
-                    {
-                        throw new Exception("Only functions may return values.");
-                    }
-                    else
-                    {
-                        ;
-                    }
-
                     if (PeekNextToken() != Token.Newline && PeekNextToken() != Token.Semicolon)
                     {
                         CallStack.Push(function);
@@ -332,17 +328,12 @@ namespace fastcode.runtime
                         {
                             return;
                         }
-                        else
-                        {
-                            ;
-                        }
                         function = (FunctionStructure)CallStack.Pop();
                         function.Result = expr;
                     }
                     CallStack.Push(function);
-                    SkipControlStructure(-j,true);
-                     ExecuteNextStatement();
-
+                    SkipControlStructure(j,true);
+                    ExecuteNextStatement();
                     break;
                 case Token.Stop:
                     Exit = true;
@@ -384,7 +375,7 @@ namespace fastcode.runtime
                         SkipControlStructure();
                         prevStructure = CallStack.Pop();
                     }
-                    current.RepeatStatus = ControlStructureRepeatStatus.Return; //sets to return, ifs never repeat
+                    current.WillRepeat = false; //sets to return, ifs never repeat
                     
                     break;
                 case Token.Else: //not if results are inverted 
@@ -396,20 +387,15 @@ namespace fastcode.runtime
                     {
                         CallStack.Push(new ControlStructure(ControlStructureType.Else));
                         ReadTillControlStructureStart(false);
-                        ControlStructure current2 = CallStack.Pop();
-                        current2.Result = null;
-                        current2.RepeatStatus = ControlStructureRepeatStatus.Return;
-                        CallStack.Push(current2);
+                        CallStack.Peek().WillRepeat = false;
                     }
                     else if ((bool)prevStructure.Result == false)
                     {
                         CallStack.Push(new ControlStructure(ControlStructureType.Else));
                         ReadTillControlStructureStart(false);
                         SkipControlStructure();
-                        ControlStructure current3 = CallStack.Pop();
-                        current3.Result = null;
-                        current3.RepeatStatus = ControlStructureRepeatStatus.Return;
-                        prevStructure = current3;
+                        CallStack.Peek().WillRepeat = false;
+                        prevStructure = CallStack.Pop();
                     }
                     break;
                 case Token.Elif:
@@ -420,7 +406,7 @@ namespace fastcode.runtime
                     else
                     {
                         ControlStructure current5 = new ControlStructure(ControlStructureType.Elif);
-                        current5.RepeatStatus = ControlStructureRepeatStatus.Return;
+                        current5.WillRepeat = false;
                         CallStack.Push(current5);
                         current5.Result = false;
                         if ((bool)prevStructure.Result == true)
@@ -448,10 +434,6 @@ namespace fastcode.runtime
                         }
                     }
                     break;
-                case Token.Forever:
-                    CallStack.Push(new ControlStructure(ControlStructureType.Forever));
-                    ReadTillControlStructureStart();
-                    break;
                 case Token.While:
                     WhileStructure whileStructure = new WhileStructure();
                     whileStructure.ExpressionMarker = new Marker(expressionMarker.Index, expressionMarker.Collumn, expressionMarker.Row);
@@ -465,7 +447,7 @@ namespace fastcode.runtime
                     ReadTillControlStructureStart();
                     if ((bool)whileStructure.Result == true)
                     {
-                        whileStructure.RepeatStatus = ControlStructureRepeatStatus.Return;
+                        whileStructure.WillRepeat = false;
                         SkipControlStructure();
                         prevStructure = CallStack.Pop();
                     }
@@ -489,9 +471,9 @@ namespace fastcode.runtime
                     else if(expr.Type == ValueType.String)
                     {
                         forStructure.Values = new List<Value>();
-                        for (int i = 0; i < expr.String.Length; i++)
+                        for (int k = 0; k < expr.String.Length; k++)
                         {
-                            forStructure.Values.Add(new Value(expr.String[i]));
+                            forStructure.Values.Add(new Value(expr.String[k]));
                         }
                     }
                     else
@@ -499,30 +481,17 @@ namespace fastcode.runtime
                         throw new Exception("Fastcode can only iterate through an array or string.");
                     }
                     forStructure.currentIndex = 0;
-                    Stack<ControlStructure> searched2 = new Stack<ControlStructure>();
-                    while(CallStack.Count > 0)
+                    FunctionStructure functionStructure1 = GetCurrentFunction();
+                    if (forStructure.Values.Count > 0)
                     {
-                        searched2.Push(CallStack.Pop());
-                        if(searched2.Peek().GetType() == typeof(FunctionStructure))
+                        if (functionStructure1.LocalVariables.ContainsKey(forStructure.IndexerIdentifier))
                         {
-                            FunctionStructure functionStructure1 = (FunctionStructure)searched2.Peek();
-                            if (forStructure.Values.Count > 0)
-                            {
-                                if (functionStructure1.LocalVariables.ContainsKey(forStructure.IndexerIdentifier))
-                                {
-                                    functionStructure1.LocalVariables[forStructure.IndexerIdentifier] = forStructure.Values[0];
-                                }
-                                else
-                                {
-                                    functionStructure1.LocalVariables.Add(forStructure.IndexerIdentifier, forStructure.Values[0]);
-                                }
-                            }
-                            break;
+                            functionStructure1.LocalVariables[forStructure.IndexerIdentifier] = forStructure.Values[0];
                         }
-                    }
-                    while(searched2.Count > 0)
-                    {
-                        CallStack.Push(searched2.Pop());
+                        else
+                        {
+                            functionStructure1.LocalVariables.Add(forStructure.IndexerIdentifier, forStructure.Values[0]);
+                        }
                     }
 
                     CallStack.Push(forStructure);
@@ -530,7 +499,7 @@ namespace fastcode.runtime
                     if(forStructure.currentIndex >= forStructure.Values.Count)
                     {
                         SkipControlStructure();
-                        forStructure.RepeatStatus = ControlStructureRepeatStatus.Return;
+                        forStructure.WillRepeat = false;
                         prevStructure = CallStack.Pop();
                     }
                     break;
@@ -577,7 +546,6 @@ namespace fastcode.runtime
                     SkipControlStructure();
                     break;
                 case Token.CloseBrace: //checks to return or repeat. 
-                    bracket_counter--;
                     if(CallStack.Peek().GetType() == typeof(WhileStructure))
                     {
                         Marker currentpos = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
@@ -588,50 +556,26 @@ namespace fastcode.runtime
                         {
                             return;
                         }
-                        bool result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
-                        if(!result)
+                        if(expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1)
                         {
-                            lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
-                            ReadNextToken();
+                            lexer.ShiftCurrentPosition(currentpos);
                         }
                         else
                         {
-                            try
-                            {
-                                lexer.ShiftCurrentPosition(currentpos);
-                                ReadNextToken();
-                            }
-                            catch
-                            {
-                                Exit = true;
-                                return;
-                            }
+                            lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                         }
+                        ReadNextToken();
                     }
                     else if(CallStack.Peek().GetType() == typeof(ForStructure))
                     {
                         ForStructure forStructure2 = (ForStructure)CallStack.Pop();
-                        forStructure2.RepeatStatus = ControlStructureRepeatStatus.Return;
+                        forStructure2.WillRepeat = false;
                         forStructure2.currentIndex++;
-                        FunctionStructure functionStructure2 = null;
-                        Stack<ControlStructure> searched3 = new Stack<ControlStructure>();
-                        while (CallStack.Count > 0)
-                        {
-                            searched3.Push(CallStack.Pop());
-                            if (searched3.Peek().GetType() == typeof(FunctionStructure))
-                            {
-                                functionStructure2 = (FunctionStructure)searched3.Peek();
-                                break;
-                            }
-                        }
+                        FunctionStructure functionStructure2 = GetCurrentFunction();
                         if (forStructure2.currentIndex < forStructure2.Values.Count)
                         {
                             functionStructure2.LocalVariables[forStructure2.IndexerIdentifier] = forStructure2.Values[forStructure2.currentIndex];
-                            forStructure2.RepeatStatus = ControlStructureRepeatStatus.Continue;
-                            while (searched3.Count > 0)
-                            {
-                                CallStack.Push(searched3.Pop());
-                            }
+                            forStructure2.WillRepeat = true;
                             CallStack.Push(forStructure2);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                             ReadNextToken();
@@ -639,10 +583,6 @@ namespace fastcode.runtime
                         else
                         {
                             functionStructure2.LocalVariables.Remove(forStructure2.IndexerIdentifier);
-                            while (searched3.Count > 0)
-                            {
-                                CallStack.Push(searched3.Pop());
-                            }
                         }
                     }
                     else if(CallStack.Peek().GetType() == typeof(FunctionStructure))
@@ -653,17 +593,21 @@ namespace fastcode.runtime
                         //Tuple<int, List<Value>> currentEval = functionEvaluativeStack.Pop();
                         //currentEval.Item2.Add((Value)finishedfunction.Result);
                         //functionEvaluativeStack.Push(currentEval);
-                        functionEvaluativeStack[functionEvaluativeStack.Count-1].Item2.Add((Value)finishedfunction.Result);
+                        GetCurrentFunction().functionResults.Enqueue((Value)finishedfunction.Result);
                     }
-                    else if (CallStack.Peek().RepeatStatus == ControlStructureRepeatStatus.Return)
+                    else
                     {
-                        prevStructure = CallStack.Pop();
+                        if (CallStack.Peek().WillRepeat)
+                        {
+                            lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
+                            ReadNextToken();
+                        }
+                        else
+                        {
+                            prevStructure = CallStack.Pop();
+                        }
                     }
-                    else if (CallStack.Peek().RepeatStatus == ControlStructureRepeatStatus.Continue)
-                    {
-                        lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
-                        ReadNextToken();
-                    }
+                    
                     break;
                 default:
                     throw new UnexpectedStatementException(keyword.ToString());
@@ -709,117 +653,28 @@ namespace fastcode.runtime
             return tok;
         }
 
-        public void ReadTillControlStructureStart(bool markposition=true)
+        Value EvaluateNextExpression()
         {
-            while (lastToken != Token.OpenBrace)
-            {
-                ReadNextToken();
-            }
-            bracket_counter++; //see one bracket;
-            ReadNextToken();
-
-            if(markposition)
-            {
-                ControlStructure current = CallStack.Pop();
-                current.StartPosition = new Marker(lexer.Position.Index - 1, lexer.Position.Collumn, lexer.Position.Row);
-                CallStack.Push(current);
-            }
-        }
-
-        public void SkipControlStructure(int offset = 0, bool readtok = false)
-        {
-            int i = bracket_counter - 1 + offset;
-
-            while (i != bracket_counter)
-            {
-                if (lastToken == Token.OpenBrace)
-                {
-                    bracket_counter++;
-                }
-                else if (lastToken == Token.CloseBrace)
-                {
-                    bracket_counter--;
-                }
-                if(readtok)
-                {
-                    if(i == bracket_counter)
-                    {
-                        break;
-                    }
-                }
-                ReadNextToken();
-            }
-        }
-
-        Value EvaluateNextExpression(bool keepargcount = false)
-        {
-            int lid = lexer.Position.Index;
-            currentFunction++;
-
-            FunctionStructure currentStructure = null;
-            Stack<ControlStructure> searched = new Stack<ControlStructure>();
-            while(CallStack.Count > 0)
-            {
-                searched.Push(CallStack.Pop());
-                if(searched.Peek().GetType() == typeof(FunctionStructure))
-                {
-                    currentStructure = (FunctionStructure)searched.Peek();
-                    break;
-                }
-            }
-            while(searched.Count > 0)
-            {
-                CallStack.Push(searched.Pop());
-            }
-
-            if (!currentStructure.functionEvaluativeLocations.Contains(lid))
-            {
-                currentStructure.functionEvaluativeLocations.Add(lid);
-                functionEvaluativeStack.Add(new Tuple<int, List<Value>>(0, new List<Value>()));
-            }
-            if (!keepargcount)
-            {
-                if (!currentStructure.expressionStartLocations.Contains(lid))
-                {
-                    currentStructure.expressionStartLocations.Add(lid);
-                    argumentEvaluations.Push(argumentEvaluativeQueue.Count);
-                    functionEvaluations.Push(currentFunction);
-                }
-                currentEvalArgument = argumentEvaluations.Peek();
-                currentFunction = functionEvaluations.Peek();
-            }
-            Value val = EvaluateNextExpression(0);
+            FunctionStructure function = GetCurrentFunction();
+            Value val = EvaluateNextExpression(0,function);
             if(val == null)
             {
-                if (!keepargcount)
+                while(function.processedFunctionResults.Count > 0)
                 {
-                    if (!currentStructure.expressionStartLocations.Contains(lid))
-                    {
-                        currentStructure.expressionStartLocations.Add(lid);
-                        argumentEvaluations.Push(currentEvalArgument);
-                        functionEvaluations.Push(currentFunction);
-                    }
+                    function.functionResults.Enqueue(function.processedFunctionResults.Dequeue());
                 }
                 return null;
             }
             else
             {
-                if (!keepargcount)
-                {
-                    currentStructure.expressionStartLocations.Remove(lid);
-                    functionEvaluations.Pop();
-                    argumentEvaluations.Pop();
-                }
-                functionEvaluativeStack.RemoveAt(functionEvaluativeStack.Count - 1);
-                currentStructure.functionEvaluativeLocations.Remove(lid);
-                currentFunction--;
+                function.processedFunctionResults.Clear();
                 return val;
             }
         }
 
         //this and next value are really important because that's how values for arguments are ascertained
         //gets the next expression (conditions, expressions) and evaluates it. Return's 0 or 1 for conditions
-        Value EvaluateNextExpression(int min)
+        Value EvaluateNextExpression(int min, FunctionStructure current)
         {
             Dictionary<Token, int> precedens = new Dictionary<Token, int>()
             {
@@ -831,7 +686,7 @@ namespace fastcode.runtime
                 { Token.Asterisk, 3 }, {Token.Modulous, 3 }, {Token.Slash, 3 },
                 { Token.Caret, 4 }
             }; //counts the amount of required "arguments" for each operand
-            Value value = NextValue();
+            Value value = NextValue(current);
             if(value == null)
             {
                 return null;
@@ -847,7 +702,7 @@ namespace fastcode.runtime
                 int assoc = 0; // 0 left, 1 right; Operator associativity
                 int nextmin = assoc == 0 ? prec : prec + 1;
                 ReadNextToken();
-                Value rhs = EvaluateNextExpression(nextmin);
+                Value rhs = EvaluateNextExpression(nextmin,current);
                 if(rhs == null)
                 {
                     return null;
@@ -859,7 +714,7 @@ namespace fastcode.runtime
         }
 
         //gets the next value
-        Value NextValue()
+        Value NextValue(FunctionStructure current)
         {
             Value val = Value.Null;
             if(lastToken == Token.Value) //raw value
@@ -911,15 +766,6 @@ namespace fastcode.runtime
                     string fid = lexer.TokenIdentifier;
                     int aid = lexer.Position.Index;
                     List<Value> arguments = new List<Value>();
-                    if(currentEvalArgument>=argumentEvaluativeQueue.Count)
-                    {
-                        argumentEvaluativeQueue.Add(arguments);
-                    }
-                    else
-                    {
-                        arguments = argumentEvaluativeQueue[currentEvalArgument];
-                    }
-                    currentEvalArgument++;
                     int argno = 0; //current argument index
                     while (lastToken != Token.CloseParenthesis) //collect all the arguments
                     {
@@ -932,7 +778,7 @@ namespace fastcode.runtime
                         {
                             if (argno >= arguments.Count)
                             {
-                                Value v = EvaluateNextExpression(true);
+                                Value v = EvaluateNextExpression(0,current);
                                 if (v == null)
                                 {
                                     return null; //this is how to escape the recursive function when a function needs to be evaluated through the main loop first
@@ -960,18 +806,20 @@ namespace fastcode.runtime
                         argno++;
                     }
                     //bracket_counter++;
+                    if (current.functionResults.Count > 0)
+                    {
+                        Value value = current.functionResults.Dequeue();
+                        current.processedFunctionResults.Enqueue(value);
+                        ReadNextToken();
+                        return value;
+                    }
                     if (functions.ContainsKey(fid))
                     {
-                        if (functionEvaluativeStack[currentFunction].Item1 < functionEvaluativeStack[currentFunction].Item2.Count)
-                        {
-                            argumentEvaluativeQueue.RemoveAt(argumentEvaluativeQueue.Count-1);
-                            Value value = functionEvaluativeStack[currentFunction].Item2[functionEvaluativeStack[currentFunction].Item1];
-                            Tuple<int, List<Value>> newEval2 = new Tuple<int, List<Value>>(functionEvaluativeStack[currentFunction].Item1 + 1, functionEvaluativeStack[currentFunction].Item2);
-                            functionEvaluativeStack[currentFunction] = newEval2;
-                            ReadNextToken();
-                            return value;
-                        }
                         //val = functions[lexer.TokenIdentifier](this, arguments); //evaluate the value
+                        if(CallStack.Count > 1000)
+                        {
+                            throw new StackOverflowException("The call stack's size has exceeded the 1000 item limit.");
+                        }
                         FunctionStructure f = functions[fid].Clone();
                         f.MarkAsExecuting();
                         f.SetArguments(arguments);
@@ -980,36 +828,20 @@ namespace fastcode.runtime
                         CallStack.Push(f);
                         lexer.ShiftCurrentPosition(functions[fid].StartPosition);
                         ReadNextToken();
-                        Tuple<int, List<Value>> newEval = new Tuple<int, List<Value>>(0, functionEvaluativeStack[currentFunction].Item2);
-                        functionEvaluativeStack[currentFunction] = newEval;
-                        bracket_counter = 1;
                         return null;
                     }
                     else
                     {
-                        argumentEvaluativeQueue.RemoveAt(argumentEvaluativeQueue.Count-1);
+                        val = builtInFunctions[fid].Invoke(arguments);
+                        current.processedFunctionResults.Enqueue(val);
                         ReadNextToken();
-                        return builtInFunctions[fid].Invoke(arguments);
+                        return val;
                     }
                 }
                 else
                 {
                     val = null;
-                    Stack<ControlStructure> searched = new Stack<ControlStructure>();
-                    FunctionStructure function = null;
-                    while (CallStack.Count > 0)
-                    {
-                        searched.Push(CallStack.Pop());
-                        if(searched.Peek().GetType() == typeof(FunctionStructure))
-                        {
-                            function = (FunctionStructure)searched.Peek();
-                            break;   
-                        }
-                    }
-                    while(searched.Count > 0)
-                    {
-                        CallStack.Push(searched.Pop());
-                    }
+                    FunctionStructure function = GetCurrentFunction();
                     if (function.LocalVariables.ContainsKey(lexer.TokenIdentifier))
                     {
                         string fid = lexer.TokenIdentifier;
@@ -1092,7 +924,7 @@ namespace fastcode.runtime
             {
                 ReadNextToken();
                 Token tok = prevToken;
-                val = NextValue().PerformUniaryOperation(tok);
+                val = NextValue(current).PerformUniaryOperation(tok);
             }
             return val;
         }

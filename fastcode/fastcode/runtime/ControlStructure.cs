@@ -12,16 +12,9 @@ namespace fastcode.runtime
         If,
         Elif,
         Else,
-        Count,
+        Forloop,
         While,
-        Function,
-        Forever //sometimes you have these, while trues that can just be implemented as forever. Also, this is the first repeating control structure implemented -wanna test it out first.
-    }
-
-    enum ControlStructureRepeatStatus
-    {
-        Continue, //continues executing the body
-        Return, //skips
+        Function
     }
 
     class ForStructure : ControlStructure
@@ -30,7 +23,7 @@ namespace fastcode.runtime
         public List<Value> Values { get; set; }
         public string IndexerIdentifier { get; set; }
 
-        public ForStructure() : base(ControlStructureType.Count)
+        public ForStructure() : base(ControlStructureType.Forloop)
         {
 
         }
@@ -54,17 +47,18 @@ namespace fastcode.runtime
         public int ExpectedArguments { get; private set; }
         public bool FinishedExecuting { get; private set; }
         public Marker ReturnPosition { get; private set; }
-        public HashSet<int> functionEvaluativeLocations;
-        public HashSet<int> expressionStartLocations;
+
+        public Queue<Value> functionResults;
+        public Queue<Value> processedFunctionResults;
 
         public FunctionStructure(string identifier) : base(ControlStructureType.Function)
         {
             this.Identifier = identifier;
+            this.functionResults = new Queue<Value>();
+            this.processedFunctionResults = new Queue<Value>();
             LocalVariables = new Dictionary<string, Value>();
             ExpectedArguments = 0;
-            RepeatStatus = ControlStructureRepeatStatus.Return;
-            this.functionEvaluativeLocations = new HashSet<int>();
-            this.expressionStartLocations = new HashSet<int>();
+            WillRepeat = false;
             MarkAsExecuting();
         }
 
@@ -137,7 +131,7 @@ namespace fastcode.runtime
 
     class ControlStructure
     {
-        public ControlStructureRepeatStatus RepeatStatus { get; set; }
+        public bool WillRepeat { get; set; }
         public ControlStructureType Type { get; private set; }
         public object Result { get; set; }
         public Marker StartPosition { get; set; }
@@ -146,7 +140,7 @@ namespace fastcode.runtime
         public ControlStructure(ControlStructureType type)
         {
             this.Type = type;
-            this.RepeatStatus = ControlStructureRepeatStatus.Continue;
+            this.WillRepeat = true;
         }
     }
 }
