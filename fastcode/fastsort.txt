@@ -1,3 +1,4 @@
+import "flib.debugger"
 array = [5,1,4,2,8,9,1,2,0.1,2,-10]
 function sort(tosort)
 {
@@ -14,6 +15,7 @@ function sort(tosort)
 	}
 	if flag == 1
 	{
+		breakpoint()
 		return sort(tosort)
 	}
 	return tosort

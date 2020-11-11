@@ -1,3 +1,4 @@
+import "flib.debugger"
 function recurse(i)
 {
 	out(i,endl)

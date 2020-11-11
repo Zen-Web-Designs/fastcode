@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using fastcode.runtime;
 
 namespace fastcode.flib
@@ -46,22 +45,52 @@ namespace fastcode.flib
                     throw new Exception("An invalid argument type has been passed into a built in function.");
                 }
             }
-            Process CMDInstance;
-            CMDInstance = new Process();
+
+            Process CMDInstance = new Process();
             CMDInstance.StartInfo.FileName = "cmd.exe";
             CMDInstance.StartInfo.RedirectStandardInput = true;
             CMDInstance.StartInfo.RedirectStandardOutput = true;
-            CMDInstance.StartInfo.CreateNoWindow = false;
+            CMDInstance.StartInfo.RedirectStandardError = true;
             CMDInstance.StartInfo.UseShellExecute = false;
-            CMDInstance.StartInfo.Arguments = "/C " + argumentStr;
+            CMDInstance.StartInfo.Arguments = "/c " + argumentStr;
+            StringBuilder output = new StringBuilder();
+            CMDInstance.OutputDataReceived += (object sender, DataReceivedEventArgs e) =>
+            {
+                if (e.Data != null)
+                {
+                    output.AppendLine(e.Data);
+                }
+            };
+            CMDInstance.ErrorDataReceived += (object sender, DataReceivedEventArgs e) =>
+            {
+                if (e.Data != null)
+                { 
+                    output.AppendLine(e.Data);
+                }
+            };
             CMDInstance.Start();
+            CMDInstance.BeginOutputReadLine();
+            CMDInstance.BeginErrorReadLine();
             CMDInstance.WaitForExit();
-            return new Value(CMDInstance.StandardOutput.ReadToEnd());
+            return new Value(output.ToString());
         }
 
-        public Value ReadFile()
+        public Value ReadFile(List<Value> arguments)
         {
-            return Value.Null;
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            Value lines = new Value(new List<Value>());
+            foreach(string line in File.ReadLines(arguments[0].String))
+            {
+                lines.Array.Add(new Value(line));
+            }
+            return lines;
         }
     }
 }

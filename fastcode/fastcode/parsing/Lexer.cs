@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using fastcode.runtime;
 
 namespace fastcode.parsing
@@ -117,7 +113,7 @@ namespace fastcode.parsing
             {
                 TokenIdentifier = string.Empty;
                 TokenIdentifier += lastChar;
-                while(char.IsLetterOrDigit(ReadChar()))
+                while(char.IsLetterOrDigit(ReadChar()) || lastChar == '_')
                 {
                     TokenIdentifier += lastChar;
                 }
@@ -150,8 +146,6 @@ namespace fastcode.parsing
                         return Token.Return;
                     case "stop":
                         return Token.Stop;
-                    case "assert":
-                        return Token.Assert;
                     case "import":
                         return Token.Import;
                     case "rem":

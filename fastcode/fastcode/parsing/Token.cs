@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace fastcode.parsing
+﻿namespace fastcode.parsing
 {
     public enum Token
     {
@@ -17,7 +11,6 @@ namespace fastcode.parsing
         Break,
         Return,
         Stop,
-        Assert,
         Import,
         In,
 

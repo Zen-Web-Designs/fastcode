@@ -23,7 +23,7 @@ namespace fastcode.runtime
             {"flib.stdlib", new StandardLibrary() },
             {"flib.mathlib",new MathLibrary() },
             {"flib.linq", new Linq() },
-            {"flib.wininterop", new WinInterop() }
+            {"flib.wininterop", new WinInterop()}
         }; //built in libraries allow for interoperability between fastcode and csharp
 
         public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
@@ -41,8 +41,9 @@ namespace fastcode.runtime
         //this makes up our "call stack" for control structures. Also includes whiles and elses and that stuff rather than functions
         Stack<ControlStructure> CallStack;
         ControlStructure prevStructure;
+        Debugger debugger;
 
-        public bool Exit { get; private set; } //exit condition - private set so the program cannot be aborted from the outside without going through an exit function
+        public bool Exit { get; set; } //exit condition 
 
         private string[] ReadOnlyVariables = { "null", "true", "false", "endl"};
 
@@ -56,6 +57,8 @@ namespace fastcode.runtime
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
             lexer = new Lexer(source);
+            debugger = new Debugger(ref CallStack);
+            BuiltInLibraries.Add("flib.debugger", debugger);
         }
 
         //starts the program
@@ -88,6 +91,10 @@ namespace fastcode.runtime
                     break;
                 }
                 ExecuteNextStatement(); //execute a statement
+                if (debugger.RequestDebugInterrupt)
+                {
+                    debugger.StartDebugger(); //used to step next
+                }
 
                 //expect an EOF or \n at the end of a line
                 if (lastToken != Token.Newline && lastToken != Token.EndOfFile)
@@ -168,6 +175,7 @@ namespace fastcode.runtime
             Token keyword = lastToken;
             expressionMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
             ReadNextToken();
+            Value expr;
             switch (keyword)
             {
                 case Token.Identifier:
@@ -277,23 +285,11 @@ namespace fastcode.runtime
                         }
                     }
                     throw new Exception("Identifier \""+id+"\" cannot stand alone without a keyword.");
-                case Token.Assert:
-                    MatchToken(Token.OpenParenthesis);
-                    Value expr = EvaluateNextExpression();
-                    if(expr == null)
-                    {
-                        return;
-                    }
-                    if (expr.PerformBinaryOperation(Token.Equals,new Value(0)).Double == 1)
-                    {
-                        throw new AssertionFailedException();
-                    }
-                    break;
                 case Token.Break:
                     int i = 0;
                     while (!(CallStack.Peek().GetType() == typeof(WhileStructure) || CallStack.Peek().GetType() == typeof(ForStructure)))
                     {
-                        if (CallStack.Peek().Type == ControlStructureType.Function)
+                        if (CallStack.Peek().GetType() == typeof(FunctionStructure))
                         {
                             throw new UnexpectedStatementException(Token.Break.ToString());
                         }
@@ -308,7 +304,7 @@ namespace fastcode.runtime
                     int j = 0;
                     while (CallStack.Count != 0)
                     {
-                        if(CallStack.Peek().Type == ControlStructureType.Function)
+                        if(CallStack.Peek().GetType() == typeof(FunctionStructure))
                         {
                             function = (FunctionStructure)CallStack.Pop();
                             if(function.Identifier == "MAINSTRUCTURE")
@@ -329,7 +325,7 @@ namespace fastcode.runtime
                             return;
                         }
                         function = (FunctionStructure)CallStack.Pop();
-                        function.Result = expr;
+                        function.ReturnResult = expr;
                     }
                     CallStack.Push(function);
                     SkipControlStructure(j,true);
@@ -358,80 +354,73 @@ namespace fastcode.runtime
                     Exit = true;
                     return;
                 case Token.If:
-                    ControlStructure current = new ControlStructure(ControlStructureType.If);
+                    IfElifStructure ifStructure = new IfElifStructure();
                     Value expr1 = EvaluateNextExpression();
                     if(expr1 == null)
                     {
                         return;
                     }
-                    else
-                    current.Result = (expr1.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
-                    CallStack.Push(current);
+                    ifStructure.Result = (expr1.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
+                    CallStack.Push(ifStructure);
 
                     ReadTillControlStructureStart(false); //read till open bracket
 
-                    if((bool)current.Result == true) //skip till close bracket.
+                    if(ifStructure.Result == true) //skip till close bracket.
                     {
                         SkipControlStructure();
                         prevStructure = CallStack.Pop();
                     }
-                    current.WillRepeat = false; //sets to return, ifs never repeat
                     
                     break;
                 case Token.Else: //not if results are inverted 
-                    if (prevStructure.Type != ControlStructureType.If && prevStructure.Type != ControlStructureType.Elif)
+                    if (prevStructure.GetType() != typeof(IfElifStructure))
                     {
                         throw new UnexpectedStatementException(keyword.ToString());
                     }
-                    else if ((bool)prevStructure.Result == true) //skip all the crap
+                    IfElifStructure prevElseStructure = (IfElifStructure)prevStructure;
+                    if (prevElseStructure.Result == true) //skip all the crap
                     {
-                        CallStack.Push(new ControlStructure(ControlStructureType.Else));
+                        CallStack.Push(new ElseStructure());
                         ReadTillControlStructureStart(false);
-                        CallStack.Peek().WillRepeat = false;
                     }
-                    else if ((bool)prevStructure.Result == false)
+                    else if (prevElseStructure.Result == false)
                     {
-                        CallStack.Push(new ControlStructure(ControlStructureType.Else));
                         ReadTillControlStructureStart(false);
                         SkipControlStructure();
-                        CallStack.Peek().WillRepeat = false;
-                        prevStructure = CallStack.Pop();
+                        prevStructure = new ElseStructure();
                     }
                     break;
                 case Token.Elif:
-                    if(prevStructure.Type != ControlStructureType.If && prevStructure.Type != ControlStructureType.Elif)
+                    if(prevStructure.GetType() != typeof(IfElifStructure))
                     {
                         throw new UnexpectedStatementException(keyword.ToString());
                     }
-                    else
+                    IfElifStructure elifStructure = new IfElifStructure();
+                    prevElseStructure = (IfElifStructure)prevStructure;
+                    if (prevElseStructure.Result == true)
                     {
-                        ControlStructure current5 = new ControlStructure(ControlStructureType.Elif);
-                        current5.WillRepeat = false;
-                        CallStack.Push(current5);
-                        current5.Result = false;
-                        if ((bool)prevStructure.Result == true)
+                        expr = EvaluateNextExpression();
+                        if(expr == null)
                         {
-                            ControlStructure control4 = CallStack.Pop();
-                            expr = EvaluateNextExpression();
-                            if(expr == null)
-                            {
-                                return;
-                            }
-                            control4.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
-                            CallStack.Push(control4);
-                            ReadTillControlStructureStart(false);
-                            if ((bool)CallStack.Peek().Result == true)
-                            {
-                                SkipControlStructure();
-                                prevStructure = CallStack.Pop();
-                            }
+                            return;
+                        }
+                        elifStructure.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
+                        ReadTillControlStructureStart(false);
+                        if (elifStructure.Result == true)
+                        {
+                            SkipControlStructure();
+                            prevStructure = elifStructure;
                         }
                         else
                         {
-                            ReadTillControlStructureStart(false);
-                            SkipControlStructure();
-                            prevStructure = CallStack.Pop();
+                            CallStack.Push(elifStructure);
                         }
+                    }
+                    else
+                    {
+                        ReadTillControlStructureStart(false);
+                        SkipControlStructure();
+                        prevStructure = elifStructure;
                     }
                     break;
                 case Token.While:
@@ -590,10 +579,7 @@ namespace fastcode.runtime
                         FunctionStructure finishedfunction = (FunctionStructure)CallStack.Pop();
                         finishedfunction.MarkAsFinished();
                         lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
-                        //Tuple<int, List<Value>> currentEval = functionEvaluativeStack.Pop();
-                        //currentEval.Item2.Add((Value)finishedfunction.Result);
-                        //functionEvaluativeStack.Push(currentEval);
-                        GetCurrentFunction().functionResults.Enqueue((Value)finishedfunction.Result);
+                        GetCurrentFunction().functionResults.Enqueue(finishedfunction.ReturnResult);
                     }
                     else
                     {
@@ -824,7 +810,7 @@ namespace fastcode.runtime
                         f.MarkAsExecuting();
                         f.SetArguments(arguments);
                         f.MarkReturnPosition(keywordMarker);
-                        f.Result = Value.Null;
+                        f.ReturnResult = Value.Null;
                         CallStack.Push(f);
                         lexer.ShiftCurrentPosition(functions[fid].StartPosition);
                         ReadNextToken();

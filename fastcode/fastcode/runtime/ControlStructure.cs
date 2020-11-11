@@ -2,38 +2,27 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace fastcode.runtime
 {
-    enum ControlStructureType
-    {
-        If,
-        Elif,
-        Else,
-        Forloop,
-        While,
-        Function
-    }
-
     class ForStructure : ControlStructure
     {
         public int currentIndex { get; set; }
         public List<Value> Values { get; set; }
         public string IndexerIdentifier { get; set; }
 
-        public ForStructure() : base(ControlStructureType.Forloop)
+        public ForStructure() : base()
         {
-
+            
         }
     }
 
     class WhileStructure : ControlStructure
     {
+        public bool Result { get; set; }
         public Marker ExpressionMarker { get; set; } //for control structures set to evaluate
 
-        public WhileStructure() : base(ControlStructureType.While)
+        public WhileStructure() : base()
         {
 
         }
@@ -47,11 +36,12 @@ namespace fastcode.runtime
         public int ExpectedArguments { get; private set; }
         public bool FinishedExecuting { get; private set; }
         public Marker ReturnPosition { get; private set; }
+        public Value ReturnResult { get; set; }
 
         public Queue<Value> functionResults;
         public Queue<Value> processedFunctionResults;
 
-        public FunctionStructure(string identifier) : base(ControlStructureType.Function)
+        public FunctionStructure(string identifier) : base()
         {
             this.Identifier = identifier;
             this.functionResults = new Queue<Value>();
@@ -59,6 +49,7 @@ namespace fastcode.runtime
             LocalVariables = new Dictionary<string, Value>();
             ExpectedArguments = 0;
             WillRepeat = false;
+            ReturnResult = Value.Null;
             MarkAsExecuting();
         }
 
@@ -101,18 +92,6 @@ namespace fastcode.runtime
             }
         }
 
-        public void Reset()
-        {
-            StartPosition = null;
-            FinishedExecuting = false;
-            Result = null;
-            LocalVariables.Clear();
-            for (int i = 0; i < ExpectedArguments; i++)
-            {
-                LocalVariables.Add(argument_identifiers[i], Value.Null);
-            }
-        }
-
         public void MarkAsExecuting()
         {
             FinishedExecuting = false;
@@ -129,17 +108,32 @@ namespace fastcode.runtime
         }
     }
 
+    class IfElifStructure:ControlStructure
+    {
+        public bool Result { get; set; }
+
+        public IfElifStructure():base()
+        {
+            Result = false;
+            WillRepeat = false;
+        }
+    }
+
+    class ElseStructure : ControlStructure
+    {
+        public ElseStructure():base()
+        {
+            WillRepeat = false;
+        }
+    }
+
     class ControlStructure
     {
         public bool WillRepeat { get; set; }
-        public ControlStructureType Type { get; private set; }
-        public object Result { get; set; }
         public Marker StartPosition { get; set; }
 
-
-        public ControlStructure(ControlStructureType type)
+        public ControlStructure()
         {
-            this.Type = type;
             this.WillRepeat = true;
         }
     }

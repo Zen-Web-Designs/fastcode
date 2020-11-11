@@ -2,9 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Management;
-using System.Text;
-using System.Threading.Tasks;
 using fastcode.runtime;
 
 namespace fastcode
@@ -21,18 +18,7 @@ namespace fastcode
 
             if (args.Length == 0)
             {
-                string Query = "SELECT Capacity FROM Win32_PhysicalMemory";
-                ManagementObjectSearcher searcher = new ManagementObjectSearcher(Query);
-
-                UInt64 Capacity = 0;
-                foreach (ManagementObject WniPART in searcher.Get())
-                {
-                    Capacity += Convert.ToUInt64(WniPART.Properties["Capacity"].Value);
-                }
-
                 Console.WriteLine("FASTCODE prototype version 1\nWritten by Michael Wang\n");
-                Console.WriteLine(Capacity + " Bytes of Memory Availible\n");
-
                 while (true)
                 {
                     Console.Write((Lines.Count + 1) + ": ");
@@ -113,13 +99,14 @@ namespace fastcode
             }
             catch (Exception e)
             {
-                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1) + ", INDEX: " + interpreter.Position.Index + ". The program has been terminated.");
+                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1)+".");
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("\"" + Lines[interpreter.Position.Row] + "\"\n");
                 Console.ForegroundColor = defaultColor;
                 Console.WriteLine(e.GetType());
                 Console.WriteLine(e.Message);
             }
+            
         }
     }
 }
