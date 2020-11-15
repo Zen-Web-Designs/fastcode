@@ -9,15 +9,16 @@ namespace fastcode
     class Program
     {
         public static List<string> Lines = new List<string>();
+        public static string CurrentDicectory = "C:\\Windows\\System32";
         static ConsoleColor defaultColor;
 
         static void Main(string[] args)
         {
             Console.Title = "FastCode";
             defaultColor = Console.ForegroundColor;
-
             if (args.Length == 0)
             {
+                CurrentDicectory = Directory.GetCurrentDirectory();
                 Console.WriteLine("FASTCODE prototype version 1\nWritten by Michael Wang\n");
                 while (true)
                 {
@@ -83,9 +84,20 @@ namespace fastcode
             }
             else
             {
-                string code = File.ReadAllText(args[0]);
-                Lines = code.Split('\n').ToList();
-                run(code);
+                if (File.Exists(args[0]))
+                {
+                    FileInfo info = new FileInfo(args[0]);
+                    CurrentDicectory = info.DirectoryName;
+                    string code = File.ReadAllText(info.FullName);
+                    Lines = code.Split('\n').ToList();
+                    run(code);
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("The file \""+args[0]+"\" doesn't exist.");
+                    Console.ForegroundColor = defaultColor;
+                }
             }
         }
 
@@ -99,14 +111,13 @@ namespace fastcode
             }
             catch (Exception e)
             {
-                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1)+".");
+                Console.WriteLine("ERROR at ROW: " + (interpreter.Position.Row + 1) + ", COL: " + (interpreter.Position.Collumn + 1) + ".");
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\"" + Lines[interpreter.Position.Row] + "\"\n");
+                Console.WriteLine(Lines[interpreter.Position.Row] + "\n");
                 Console.ForegroundColor = defaultColor;
                 Console.WriteLine(e.GetType());
                 Console.WriteLine(e.Message);
             }
-            
         }
     }
 }

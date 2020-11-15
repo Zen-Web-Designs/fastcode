@@ -19,7 +19,6 @@ namespace fastcode.runtime
 
     class WhileStructure : ControlStructure
     {
-        public bool Result { get; set; }
         public Marker ExpressionMarker { get; set; } //for control structures set to evaluate
 
         public WhileStructure() : base()
@@ -34,8 +33,7 @@ namespace fastcode.runtime
         List<string> argument_identifiers;
         public Dictionary<string, Value> LocalVariables { get; private set; }
         public int ExpectedArguments { get; private set; }
-        public bool FinishedExecuting { get; private set; }
-        public Marker ReturnPosition { get; private set; }
+        public Marker ReturnPosition { get; set; }
         public Value ReturnResult { get; set; }
 
         public Queue<Value> functionResults;
@@ -48,25 +46,14 @@ namespace fastcode.runtime
             this.processedFunctionResults = new Queue<Value>();
             LocalVariables = new Dictionary<string, Value>();
             ExpectedArguments = 0;
-            WillRepeat = false;
             ReturnResult = Value.Null;
-            MarkAsExecuting();
         }
 
-        public FunctionStructure Clone()
+        public FunctionStructure CloneTemplate()
         {
             FunctionStructure functionStructure = new FunctionStructure(Identifier);
             functionStructure.SetArgumentParameters(argument_identifiers);
             functionStructure.SetArguments(LocalVariables.Values.ToList());
-            if(FinishedExecuting)
-            {
-                functionStructure.MarkAsFinished();
-            }
-            else
-            {
-                functionStructure.MarkAsExecuting();
-            }
-            functionStructure.MarkReturnPosition(ReturnPosition);
             return functionStructure;
         }
 
@@ -91,21 +78,6 @@ namespace fastcode.runtime
                 LocalVariables[argument_identifiers[i]] = arguments[i];
             }
         }
-
-        public void MarkAsExecuting()
-        {
-            FinishedExecuting = false;
-        }
-
-        public void MarkAsFinished()
-        {
-            FinishedExecuting = true;
-        }
-
-        public void MarkReturnPosition(Marker ret)
-        {
-            this.ReturnPosition = ret;
-        }
     }
 
     class IfElifStructure:ControlStructure
@@ -115,7 +87,6 @@ namespace fastcode.runtime
         public IfElifStructure():base()
         {
             Result = false;
-            WillRepeat = false;
         }
     }
 
@@ -123,18 +94,17 @@ namespace fastcode.runtime
     {
         public ElseStructure():base()
         {
-            WillRepeat = false;
+
         }
     }
 
     class ControlStructure
     {
-        public bool WillRepeat { get; set; }
         public Marker StartPosition { get; set; }
 
         public ControlStructure()
         {
-            this.WillRepeat = true;
+
         }
     }
 }

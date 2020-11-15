@@ -9,7 +9,7 @@ namespace fastcode.runtime
         Array,
         Double,
         String,
-        Char,
+        Character,
         Null
     }
 
@@ -36,7 +36,7 @@ namespace fastcode.runtime
             {
                 return String;
             }
-            else if(Type == ValueType.Char)
+            else if(Type == ValueType.Character)
             {
                 return Character.ToString();
             }
@@ -53,7 +53,7 @@ namespace fastcode.runtime
                     {
                         ret += "\"" + Array[i].ToString() + "\"";
                     }
-                    else if(Array[i].Type == ValueType.Char)
+                    else if(Array[i].Type == ValueType.Character)
                     {
                         ret += "\'" + Array[i].ToString() + "\'";
                     }
@@ -81,7 +81,7 @@ namespace fastcode.runtime
 
         public Value(char c)
         {
-            this.Type = ValueType.Char;
+            this.Type = ValueType.Character;
             this.Character = c;
         }
 
@@ -127,11 +127,11 @@ namespace fastcode.runtime
             Value a = this;
             if (a.Type != b.Type)
             {
-                if(a.Type == ValueType.String && b.Type == ValueType.Char)
+                if(a.Type == ValueType.String && b.Type == ValueType.Character)
                 {
                     return new Value(a.String + b.Character);
                 }
-                else if (a.Type == ValueType.Char && b.Type == ValueType.String)
+                else if (a.Type == ValueType.Character && b.Type == ValueType.String)
                 {
                     return new Value(a.Character + b.String);
                 }
@@ -152,7 +152,7 @@ namespace fastcode.runtime
                     return new Value(a.Double + b.Double);
                 else if (a.Type == ValueType.String)
                     return new Value(a.String + b.String);
-                else if (a.Type == ValueType.Char)
+                else if (a.Type == ValueType.Character)
                     return new Value((char)(a.Character + b.Character));
             }
             else if (token == Token.Equals)
@@ -161,7 +161,7 @@ namespace fastcode.runtime
                     return new Value(a.Double == b.Double ? 1 : 0);
                 else if (a.Type == ValueType.String)
                     return new Value(a.String == b.String ? 1 : 0);
-                else if (a.Type == ValueType.Char)
+                else if (a.Type == ValueType.Character)
                     return new Value(a.Character == b.Character ? 1 : 0);
                 else if (a.Type == ValueType.Null)
                     return new Value(a.Type == ValueType.Null ? 1 : 0);

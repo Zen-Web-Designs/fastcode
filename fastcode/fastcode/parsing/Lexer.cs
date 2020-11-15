@@ -124,8 +124,6 @@ namespace fastcode.parsing
                         return Token.And;
                     case "or":
                         return Token.Or;
-                    case "not":
-                        return Token.Not;
                     case "in":
                         return Token.In;
                     case "if":

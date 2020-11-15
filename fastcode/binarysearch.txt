@@ -6,6 +6,7 @@ function search(arr, l, r, x)
 		mid = floor(l + (r-l)/2)
 		if arr[mid] == x
 		{
+			breakpoint()
 			return mid
 		}
 		elif arr[mid] > x
@@ -22,6 +23,5 @@ function search(arr, l, r, x)
 		return -1
 	}
 }
-breakpoint()
 tosearch = [0,1,3,4,7,8,9,11,23,45]
 out(search(tosearch,0,len(tosearch)-1,23)) 

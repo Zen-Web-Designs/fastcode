@@ -18,17 +18,23 @@ namespace fastcode.runtime
             get { return lexer.Position; }
         }
 
+        public string WorkingDir
+        {
+            get { return ((WinInterop)BuiltInLibraries["flib.wininterop"]).WorkingDirectory; }
+            set { ((WinInterop)BuiltInLibraries["flib.wininterop"]).WorkingDirectory = value; }
+        }
+
         Dictionary<string, Library> BuiltInLibraries = new Dictionary<string, Library>()
         {
             {"flib.stdlib", new StandardLibrary() },
             {"flib.mathlib",new MathLibrary() },
             {"flib.linq", new Linq() },
-            {"flib.wininterop", new WinInterop()}
+            {"flib.wininterop", new WinInterop()},
+            {"flib.math.polynomials", new PolynomialLibrary() }
         }; //built in libraries allow for interoperability between fastcode and csharp
 
         public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
 
-        public delegate Value BuiltInFunction(List<Value> arguments);
         Dictionary<string, BuiltInFunction> builtInFunctions;
         Dictionary<string, FunctionStructure> functions;
 
@@ -45,7 +51,7 @@ namespace fastcode.runtime
 
         public bool Exit { get; set; } //exit condition 
 
-        private string[] ReadOnlyVariables = { "null", "true", "false", "endl"};
+        private string[] ReadOnlyVariables = { "null", "true", "false", "endl", "doubleType", "stringType", "arrayType" };
 
         public Interpreter(TextWriter output, TextReader input, string source)
         { 
@@ -57,7 +63,7 @@ namespace fastcode.runtime
             this.functions = new Dictionary<string, FunctionStructure>();
             this.CallStack = new Stack<ControlStructure>();
             lexer = new Lexer(source);
-            debugger = new Debugger(ref CallStack);
+            debugger = new Debugger(ref CallStack, ref functions, ref builtInFunctions);
             BuiltInLibraries.Add("flib.debugger", debugger);
         }
 
@@ -78,11 +84,13 @@ namespace fastcode.runtime
             GlobalVariables["doubleType"] = new Value("fastcode.types." + ValueType.Double);
             GlobalVariables["stringType"] = new Value("fastcode.types." + ValueType.String);
             GlobalVariables["arrayType"] = new Value("fastcode.types." + ValueType.Array);
-            while(Exit == false) //program loop
+            GlobalVariables["charType"] = new Value("fastcode.types." + ValueType.Character);
+            GlobalVariables["nullType"] = new Value("fastcode.types." + ValueType.Null);
+            while (Exit == false) //program loop
             {
                 while (lastToken == Token.Newline || lastToken == Token.Unkown)
                 {
-                    keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
+                    keywordMarker = (Marker)lexer.Position.Clone();
                     ReadNextToken();
                 }
                 if(lastToken == Token.EndOfFile || CallStack.Count == 0)
@@ -134,23 +142,17 @@ namespace fastcode.runtime
             return function;
         }
 
-        public void ReadTillControlStructureStart(bool markposition=true)
+        void ReadTillControlStructureStart()
         {
             while (lastToken != Token.OpenBrace)
             {
                 ReadNextToken();
             }
+            CallStack.Peek().StartPosition = (Marker)lexer.Position.Clone();
             ReadNextToken();
-
-            if(markposition)
-            {
-                ControlStructure current = CallStack.Pop();
-                current.StartPosition = new Marker(lexer.Position.Index - 1, lexer.Position.Collumn, lexer.Position.Row);
-                CallStack.Push(current);
-            }
         }
 
-        public void SkipControlStructure(int offset = 0, bool readtok=false)
+        void SkipControlStructure(int offset = 0, bool readtok=false)
         {
             int braceCount = offset; //skip open params, close params till it balances out
             do
@@ -173,7 +175,7 @@ namespace fastcode.runtime
         void ExecuteNextStatement()
         {
             Token keyword = lastToken;
-            expressionMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
+            expressionMarker = (Marker)lexer.Position.Clone();
             ReadNextToken();
             Value expr;
             switch (keyword)
@@ -222,7 +224,7 @@ namespace fastcode.runtime
                             lexer.ShiftCurrentPosition(keywordMarker);
                             ReadNextToken();
                             EvaluateNextExpression();
-                            return;
+                            break;
                         }
                     }
                     else if(lastToken == Token.OpenBracket)
@@ -251,16 +253,18 @@ namespace fastcode.runtime
                             if (GlobalVariables[id].Type == ValueType.Array)
                             {
                                 GlobalVariables[id].Array[(int)v.Double] = setval;
+                                break;
                             }
                             else if (GlobalVariables[id].Type == ValueType.String)
                             {
-                                if (setval.Type != ValueType.Char)
+                                if (setval.Type != ValueType.Character)
                                 {
                                     throw new Exception("Strings can only index characters.");
                                 }
                                 char[] str = GlobalVariables[id].String.ToCharArray();
                                 str[(int)v.Double] = setval.Character;
                                 GlobalVariables[id] = new Value(new string(str));
+                                break;
                             }
                         }
                         else
@@ -273,7 +277,7 @@ namespace fastcode.runtime
                             }
                             else if (f.LocalVariables[id].Type == ValueType.String)
                             {
-                                if (setval.Type != ValueType.Char)
+                                if (setval.Type != ValueType.Character)
                                 {
                                     throw new Exception("Strings can only index characters.");
                                 }
@@ -363,7 +367,7 @@ namespace fastcode.runtime
                     ifStructure.Result = (expr1.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
                     CallStack.Push(ifStructure);
 
-                    ReadTillControlStructureStart(false); //read till open bracket
+                    ReadTillControlStructureStart(); //read till open bracket
 
                     if(ifStructure.Result == true) //skip till close bracket.
                     {
@@ -381,13 +385,14 @@ namespace fastcode.runtime
                     if (prevElseStructure.Result == true) //skip all the crap
                     {
                         CallStack.Push(new ElseStructure());
-                        ReadTillControlStructureStart(false);
+                        ReadTillControlStructureStart();
                     }
                     else if (prevElseStructure.Result == false)
                     {
-                        ReadTillControlStructureStart(false);
+                        CallStack.Push(new ElseStructure());
+                        ReadTillControlStructureStart();
                         SkipControlStructure();
-                        prevStructure = new ElseStructure();
+                        prevStructure = CallStack.Pop();
                     }
                     break;
                 case Token.Elif:
@@ -405,38 +410,34 @@ namespace fastcode.runtime
                             return;
                         }
                         elifStructure.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
-                        ReadTillControlStructureStart(false);
+                        CallStack.Push(elifStructure);
+                        ReadTillControlStructureStart();
                         if (elifStructure.Result == true)
                         {
                             SkipControlStructure();
-                            prevStructure = elifStructure;
-                        }
-                        else
-                        {
-                            CallStack.Push(elifStructure);
+                            prevStructure = CallStack.Pop();
                         }
                     }
                     else
                     {
-                        ReadTillControlStructureStart(false);
+                        CallStack.Push(elifStructure);
+                        ReadTillControlStructureStart();
                         SkipControlStructure();
-                        prevStructure = elifStructure;
+                        prevStructure = CallStack.Pop();
                     }
                     break;
                 case Token.While:
                     WhileStructure whileStructure = new WhileStructure();
-                    whileStructure.ExpressionMarker = new Marker(expressionMarker.Index, expressionMarker.Collumn, expressionMarker.Row);
+                    whileStructure.ExpressionMarker = (Marker)expressionMarker.Clone();
                     expr = EvaluateNextExpression();
                     if(expr == null)
                     {
                         return;
                     }
-                    whileStructure.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
                     CallStack.Push(whileStructure);
                     ReadTillControlStructureStart();
-                    if ((bool)whileStructure.Result == true)
+                    if (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1)
                     {
-                        whileStructure.WillRepeat = false;
                         SkipControlStructure();
                         prevStructure = CallStack.Pop();
                     }
@@ -488,7 +489,6 @@ namespace fastcode.runtime
                     if(forStructure.currentIndex >= forStructure.Values.Count)
                     {
                         SkipControlStructure();
-                        forStructure.WillRepeat = false;
                         prevStructure = CallStack.Pop();
                     }
                     break;
@@ -537,7 +537,7 @@ namespace fastcode.runtime
                 case Token.CloseBrace: //checks to return or repeat. 
                     if(CallStack.Peek().GetType() == typeof(WhileStructure))
                     {
-                        Marker currentpos = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
+                        Marker currentpos = (Marker)lexer.Position.Clone();
                         lexer.ShiftCurrentPosition(((WhileStructure)CallStack.Peek()).ExpressionMarker);
                         ReadNextToken();
                         expr = EvaluateNextExpression();
@@ -547,24 +547,23 @@ namespace fastcode.runtime
                         }
                         if(expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1)
                         {
+                            prevStructure = CallStack.Pop();
                             lexer.ShiftCurrentPosition(currentpos);
                         }
                         else
                         {
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
+                            ReadNextToken();
                         }
-                        ReadNextToken();
                     }
                     else if(CallStack.Peek().GetType() == typeof(ForStructure))
                     {
                         ForStructure forStructure2 = (ForStructure)CallStack.Pop();
-                        forStructure2.WillRepeat = false;
                         forStructure2.currentIndex++;
                         FunctionStructure functionStructure2 = GetCurrentFunction();
                         if (forStructure2.currentIndex < forStructure2.Values.Count)
                         {
                             functionStructure2.LocalVariables[forStructure2.IndexerIdentifier] = forStructure2.Values[forStructure2.currentIndex];
-                            forStructure2.WillRepeat = true;
                             CallStack.Push(forStructure2);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                             ReadNextToken();
@@ -577,23 +576,14 @@ namespace fastcode.runtime
                     else if(CallStack.Peek().GetType() == typeof(FunctionStructure))
                     {
                         FunctionStructure finishedfunction = (FunctionStructure)CallStack.Pop();
-                        finishedfunction.MarkAsFinished();
                         lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
                         GetCurrentFunction().functionResults.Enqueue(finishedfunction.ReturnResult);
                     }
                     else
                     {
-                        if (CallStack.Peek().WillRepeat)
-                        {
-                            lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
-                            ReadNextToken();
-                        }
-                        else
-                        {
-                            prevStructure = CallStack.Pop();
-                        }
+                        prevStructure = CallStack.Pop();
                     }
-                    
+
                     break;
                 default:
                     throw new UnexpectedStatementException(keyword.ToString());
@@ -601,7 +591,7 @@ namespace fastcode.runtime
             }
             if(lastToken == Token.Semicolon)
             {
-                keywordMarker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
+                keywordMarker = (Marker)lexer.Position.Clone();
                 ReadNextToken();
                 while (lastToken == Token.Newline)
                 {
@@ -622,7 +612,7 @@ namespace fastcode.runtime
         //Reads the next non-newline token
         Token PeekNextToken()
         {
-            Marker marker = new Marker(lexer.Position.Index, lexer.Position.Collumn, lexer.Position.Row);
+            Marker marker = (Marker)lexer.Position.Clone();
             Token old = lastToken;
             Value oldval = lexer.TokenValue;
             string oldid = lexer.TokenIdentifier;
@@ -801,15 +791,13 @@ namespace fastcode.runtime
                     }
                     if (functions.ContainsKey(fid))
                     {
-                        //val = functions[lexer.TokenIdentifier](this, arguments); //evaluate the value
                         if(CallStack.Count > 1000)
                         {
                             throw new StackOverflowException("The call stack's size has exceeded the 1000 item limit.");
                         }
-                        FunctionStructure f = functions[fid].Clone();
-                        f.MarkAsExecuting();
+                        FunctionStructure f = functions[fid].CloneTemplate();
                         f.SetArguments(arguments);
-                        f.MarkReturnPosition(keywordMarker);
+                        f.ReturnPosition = (Marker)keywordMarker.Clone();
                         f.ReturnResult = Value.Null;
                         CallStack.Push(f);
                         lexer.ShiftCurrentPosition(functions[fid].StartPosition);

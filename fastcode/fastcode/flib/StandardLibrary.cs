@@ -5,9 +5,11 @@ using fastcode.runtime;
 
 namespace fastcode.flib
 {
+    public delegate Value BuiltInFunction(List<Value> arguments);
+
     public abstract class Library
     {
-        public abstract void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter);
+        public abstract void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter);
     }
 
     class StandardLibrary : Library
@@ -15,7 +17,7 @@ namespace fastcode.flib
         static private TextWriter OutputWriter;
         static private TextReader InputReader;
 
-        public override void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter)
+        public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
             functions.Add("split", Split);
             functions.Add("type", GetTypeID);

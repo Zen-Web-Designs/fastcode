@@ -6,13 +6,15 @@ namespace fastcode.flib
 {
     class Linq : Library
     {
-        public override void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter)
+        public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
             functions.Add("clear", Append);
             functions.Add("append", Append);
             functions.Add("push", Append);
+            functions.Add("enqueue", Append);
             functions.Add("peek", Peek);
             functions.Add("pop", Pop);
+            functions.Add("dequeue", Dequeue);
             functions.Add("insert", Insert);
             functions.Add("del", Delete);
             functions.Add("delete", Delete);
@@ -44,6 +46,21 @@ namespace fastcode.flib
             }
             arguments[0].Array.Add(arguments[1]);
             return arguments[1];
+        }
+
+        public static Value Dequeue(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.Array)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            Value toret = arguments[0].Array[0];
+            arguments[0].Array.RemoveAt(0);
+            return toret;
         }
 
         public static Value Pop(List<Value> arguments)

@@ -8,16 +8,22 @@ namespace fastcode.flib
     {
         Interpreter interpreter;
         Stack<ControlStructure> callStack;
+        Stack<DateTime> timerLaps;
+        Dictionary<string,FunctionStructure> userFunctions;
+        Dictionary<string, BuiltInFunction> builtInFunctions;
 
         public bool RequestDebugInterrupt { get; private set; }
 
-        public Debugger(ref Stack<ControlStructure> callStack)
+        public Debugger(ref Stack<ControlStructure> callStack, ref Dictionary<string, FunctionStructure> userFunctions, ref Dictionary<string, BuiltInFunction> builtInFunctions)
         {
             this.callStack = callStack;
+            this.userFunctions = userFunctions;
+            this.builtInFunctions = builtInFunctions;
+            this.timerLaps = new Stack<DateTime>();
             this.RequestDebugInterrupt = false;
         }
 
-        public override void Install(ref Dictionary<string, fastcode.runtime.Interpreter.BuiltInFunction> functions, Interpreter interpreter)
+        public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
             this.interpreter = interpreter;
             functions.Add("assert", Assert);
@@ -52,6 +58,78 @@ namespace fastcode.flib
             return Value.Null;
         }
 
+        public Value StartTimer(List<Value> arguments)
+        {
+            if (arguments.Count != 0)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            timerLaps.Push(DateTime.Now);
+            return Value.Null;
+        }
+
+        public void PrintWatch()
+        {
+            PrintLine();
+            PrintRow("Identifier", "Accessibility", "Type", "Value");
+            foreach (string id in interpreter.GlobalVariables.Keys)
+            {
+                PrintRow(id, "GLOBAL", interpreter.GlobalVariables[id].Type.ToString(), interpreter.GlobalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
+            }
+            foreach (ControlStructure structure in callStack.ToArray())
+            {
+                if (structure.GetType() == typeof(FunctionStructure))
+                {
+                    FunctionStructure function = (FunctionStructure)structure;
+                    if (function.Identifier != "MAINSTRUCTURE")
+                    {
+                        foreach (string id in function.LocalVariables.Keys)
+                        {
+                            PrintRow(id, "LOCAL(" + function.Identifier + ")", function.LocalVariables[id].Type.ToString(), function.LocalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
+                        }
+                    }
+                }
+            }
+        }
+
+        public void PrintCallstack()
+        {
+            Console.WriteLine("Stack Size: " + (callStack.Count));
+            PrintLine();
+            PrintRow("Type", "Identifier", "Arguments");
+            PrintLine();
+            foreach (ControlStructure structure in callStack.ToArray())
+            {
+                if (structure.GetType() == typeof(FunctionStructure))
+                {
+                    FunctionStructure function = (FunctionStructure)structure;
+                    PrintRow("Function", function.Identifier, function.ExpectedArguments.ToString());
+                }
+                else
+                {
+                    PrintRow(structure.GetType().ToString(), "N/A", "N/A");
+                }
+            }
+            PrintLine();
+        }
+
+        public void PrintFunctionList()
+        {
+            Console.WriteLine(userFunctions.Count + " availible user-defined functions.");
+            Console.WriteLine(builtInFunctions.Count + " availible built-in functions.");
+            PrintLine();
+            PrintRow("Identifier","Type");
+            PrintLine();
+            foreach(string id in builtInFunctions.Keys)
+            {
+                PrintRow(id, "imported from flib");
+            }
+            foreach(FunctionStructure function in userFunctions.Values)
+            {
+                PrintRow(function.Identifier, "user defined");
+            }
+        }
+
         public void StartDebugger()
         {
             while (true)
@@ -65,51 +143,25 @@ namespace fastcode.flib
                 }
                 else if (input == "callstack")
                 {
-                    Console.WriteLine("Stack Size: " + (callStack.Count - 1));
-                    PrintLine();
-                    PrintRow("Identifier", "Arguments");
-                    PrintLine();
-                    foreach (ControlStructure structure in callStack.ToArray())
-                    {
-                        if (structure.GetType() == typeof(FunctionStructure))
-                        {
-                            FunctionStructure function = (FunctionStructure)structure;
-                            if (function.Identifier != "MAINSTRUCTURE")
-                            {
-                                PrintRow(function.Identifier, function.ExpectedArguments.ToString());
-                            }
-                        }
-                    }
-                    PrintLine();
+                    PrintCallstack();
                 }
                 else if (input == "watch")
                 {
-                    PrintLine();
-                    PrintRow("Identifier", "Accessibility", "Type", "Value");
-                    foreach (string id in interpreter.GlobalVariables.Keys)
-                    {
-                        PrintRow(id, "GLOBAL", interpreter.GlobalVariables[id].Type.ToString(), interpreter.GlobalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
-                    }
-                    foreach (ControlStructure structure in callStack.ToArray())
-                    {
-                        if (structure.GetType() == typeof(FunctionStructure))
-                        {
-                            FunctionStructure function = (FunctionStructure)structure;
-                            if (function.Identifier != "MAINSTRUCTURE")
-                            {
-                                foreach (string id in function.LocalVariables.Keys)
-                                {
-                                    PrintRow(id, "LOCAL(" + function.Identifier + ")", function.LocalVariables[id].Type.ToString(), function.LocalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
-                                }
-                            }
-                        }
-                    }
+                    PrintWatch();
+                }
+                else if(input == "functions")
+                {
+                    PrintFunctionList();
                 }
                 else if(input == "next")
                 {
                     Console.WriteLine("Fastcode has executed the next statement and halted further execution at ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn + 1) + ".");
                     RequestDebugInterrupt = true;
                     return;
+                }
+                else
+                {
+                    Console.WriteLine("Unrecognized debugger command.");
                 }
             }
         }
@@ -129,7 +181,6 @@ namespace fastcode.flib
             {
                 row += AlignCentre(column, width) + "|";
             }
-
             Console.WriteLine(row);
         }
 
