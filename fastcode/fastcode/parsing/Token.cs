@@ -4,6 +4,7 @@
     {
         Unkown, //The token has yet to be identified. The function will not return an Unkown Token, but throw an exception instread.
         
+        Global,
         Identifier,  //stuff for refrences
         Value,
         Function,

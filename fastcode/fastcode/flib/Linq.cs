@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using fastcode.parsing;
 using fastcode.runtime;
 
 namespace fastcode.flib
@@ -8,7 +9,7 @@ namespace fastcode.flib
     {
         public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
-            functions.Add("clear", Append);
+            functions.Add("clear", Clear);
             functions.Add("append", Append);
             functions.Add("push", Append);
             functions.Add("enqueue", Append);
@@ -18,6 +19,40 @@ namespace fastcode.flib
             functions.Add("insert", Insert);
             functions.Add("del", Delete);
             functions.Add("delete", Delete);
+            functions.Add("newArray", Initialize);
+            functions.Add("initArray", Initialize);
+            functions.Add("array", Initialize);
+        }
+
+        public static Value Initialize(List<Value> arguments)
+        {
+            if (arguments.Count == 1)
+            {
+                if (arguments[0].Type != runtime.ValueType.Double)
+                {
+                    throw new Exception("An invalid argument type has been passed into a built in function.");
+                }
+                List<Value> newArray = new List<Value>();
+                for (int i = 0; i < arguments[0].Double; i++)
+                {
+                    newArray.Add(Value.Null);
+                }
+                return new Value(newArray);
+            }
+            else if(arguments.Count == 2)
+            {
+                if (arguments[0].Type != runtime.ValueType.Double)
+                {
+                    throw new Exception("An invalid argument type has been passed into a built in function.");
+                }
+                List<Value> newArray = new List<Value>();
+                for (int i = 0; i < arguments[0].Double; i++)
+                {
+                    newArray.Add(arguments[1]);
+                }
+                return new Value(newArray);
+            }
+            throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
         }
 
         public static Value Clear(List<Value> arguments)

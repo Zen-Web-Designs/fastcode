@@ -20,18 +20,9 @@ namespace fastcode.runtime
 
         public string WorkingDir
         {
-            get { return ((WinInterop)BuiltInLibraries["flib.wininterop"]).WorkingDirectory; }
-            set { ((WinInterop)BuiltInLibraries["flib.wininterop"]).WorkingDirectory = value; }
+            get { return winInterop.WorkingDirectory; }
+            set { winInterop.WorkingDirectory = value; }
         }
-
-        Dictionary<string, Library> BuiltInLibraries = new Dictionary<string, Library>()
-        {
-            {"flib.stdlib", new StandardLibrary() },
-            {"flib.mathlib",new MathLibrary() },
-            {"flib.linq", new Linq() },
-            {"flib.wininterop", new WinInterop()},
-            {"flib.math.polynomials", new PolynomialLibrary() }
-        }; //built in libraries allow for interoperability between fastcode and csharp
 
         public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
 
@@ -48,12 +39,13 @@ namespace fastcode.runtime
         Stack<ControlStructure> CallStack;
         ControlStructure prevStructure;
         Debugger debugger;
+        WinInterop winInterop;
 
         public bool Exit { get; set; } //exit condition 
 
         private string[] ReadOnlyVariables = { "null", "true", "false", "endl", "doubleType", "stringType", "arrayType" };
 
-        public Interpreter(TextWriter output, TextReader input, string source)
+        public Interpreter(TextWriter output, TextReader input, string source, string workingDir)
         { 
             //initialize a bunch of crap
             this.Output = output;
@@ -64,7 +56,7 @@ namespace fastcode.runtime
             this.CallStack = new Stack<ControlStructure>();
             lexer = new Lexer(source);
             debugger = new Debugger(ref CallStack, ref functions, ref builtInFunctions);
-            BuiltInLibraries.Add("flib.debugger", debugger);
+            winInterop = new WinInterop(workingDir);
         }
 
         //starts the program
@@ -74,9 +66,9 @@ namespace fastcode.runtime
             CallStack.Clear();
             GlobalVariables.Clear();
             CallStack.Push(new FunctionStructure("MAINSTRUCTURE"));
-            BuiltInLibraries["flib.stdlib"].Install(ref builtInFunctions, this);
-            BuiltInLibraries["flib.mathlib"].Install(ref builtInFunctions, this);
-            BuiltInLibraries["flib.linq"].Install(ref builtInFunctions, this);
+            (new StandardLibrary()).Install(ref builtInFunctions, this);
+            (new MathLibrary()).Install(ref builtInFunctions, this);
+            (new Linq()).Install(ref builtInFunctions, this);
             GlobalVariables["null"] = Value.Null;
             GlobalVariables["true"] = Value.True;
             GlobalVariables["false"] = Value.False;
@@ -111,6 +103,16 @@ namespace fastcode.runtime
                     throw new UnexpectedStatementException("a newline or EOF", lastToken.ToString());
                 }
             }
+        }
+
+        public void ImportLibrary(Library library)
+        {
+            library.Install(ref builtInFunctions, this);
+        }
+
+        public void ImportDebuggerCommand(string id,DebuggerCommand command)
+        {
+            debugger.debuggerCommands.Add(id, command);
         }
 
         //checks to see if the token is the same as the interpreter expected
@@ -180,6 +182,14 @@ namespace fastcode.runtime
             Value expr;
             switch (keyword)
             {
+                case Token.Global:
+                    MatchToken(Token.Identifier);
+                    if(!GlobalVariables.ContainsKey(lexer.TokenIdentifier))
+                    {
+                        GlobalVariables.Add(lexer.TokenIdentifier, Value.Null);
+                    }
+                    ReadNextToken();
+                    break;
                 case Token.Identifier:
                     string id = lexer.TokenIdentifier;
                     if (lastToken == Token.Set)
@@ -206,13 +216,9 @@ namespace fastcode.runtime
                             {
                                 f.LocalVariables[id] = v1;
                             }
-                            else if (f.Identifier != "MAINSTRUCTURE")
-                            {
-                                f.LocalVariables.Add(id, v1);
-                            }
                             else
                             {
-                                GlobalVariables.Add(id, v1);
+                                f.LocalVariables.Add(id, v1);
                             }
                         }
                         break;
@@ -344,13 +350,19 @@ namespace fastcode.runtime
                     {
                         throw new Exception("Expected string, got " + lexer.TokenValue.Type);
                     }
-                    if(BuiltInLibraries.ContainsKey(lexer.TokenValue.String))
+                    switch (lexer.TokenValue.String)
                     {
-                        BuiltInLibraries[lexer.TokenValue.String].Install(ref builtInFunctions, this);
-                    }
-                    else
-                    {
-                        throw new Exception("Cannot find library " + lexer.TokenValue.Type);
+                        case "flib.debugger":
+                            debugger.Install(ref builtInFunctions, this);
+                            break;
+                        case "flib.wininterop":
+                            winInterop.Install(ref builtInFunctions, this);
+                            break;
+                        case "flib.math.polynomials":
+                            (new PolynomialLibrary()).Install(ref builtInFunctions, this);
+                            break;
+                        default:
+                            throw new Exception("Cannot find library " + lexer.TokenValue.Type);
                     }
                     ReadNextToken();
                     break;
@@ -898,7 +910,12 @@ namespace fastcode.runtime
             {
                 ReadNextToken();
                 Token tok = prevToken;
-                val = NextValue(current).PerformUniaryOperation(tok);
+                Value val1 = NextValue(current);
+                if(val1 == null)
+                {
+                    return null;
+                }
+                val = val1.PerformUniaryOperation(tok);
             }
             return val;
         }

@@ -10,6 +10,11 @@ namespace fastcode.flib
     public abstract class Library
     {
         public abstract void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter);
+
+        public static Value invokeBuiltInFunction(BuiltInFunction function, params Value[] arguments)
+        {
+            return function.Invoke(new List<Value>(arguments));
+        }
     }
 
     class StandardLibrary : Library
@@ -24,8 +29,9 @@ namespace fastcode.flib
             functions.Add("stod", StringToDouble);
             functions.Add("dtos", DoubleToString);
             functions.Add("toCharArray", ToCharArray);
+            functions.Add("fromCharArray", FromCharArray);
             functions.Add("len", Length);
-            functions.Add("output", Output);
+            functions.Add("print", Output);
             functions.Add("out", Output);
             functions.Add("input", Input);
             functions.Add("clone", Clone);
@@ -155,6 +161,28 @@ namespace fastcode.flib
             return new Value(value);
         }
 
+        public static Value FromCharArray(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.Array)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            string ret = string.Empty;
+            foreach(Value value in arguments[0].Array)
+            {
+                if(value.Type != runtime.ValueType.Character)
+                {
+                    throw new Exception("Expected a char array.");
+                }
+                ret += value.Character;
+            }
+            return new Value(ret);
+        }
+
         public static Value StringToDouble(List<Value> arguments)
         {
             if(arguments.Count != 1)
@@ -188,20 +216,32 @@ namespace fastcode.flib
             return new Value(arguments[0].Double.ToString());
         }
 
-        public Value Clone(List<Value> arguments)
+        public static Value Clone(List<Value> arguments)
         {
             if (arguments.Count != 1)
             {
                 throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
             }
-            if (arguments[0].Type != runtime.ValueType.Array)
+            if (arguments[0].Type == runtime.ValueType.Array)
             {
-                throw new Exception("An invalid argument type has been passed into a built in function.");
+                return Clone(arguments[0]);
             }
-            return Clone(arguments[0]);
+            else if(arguments[0].Type == runtime.ValueType.String)
+            {
+                return new Value(arguments[0].String);
+            }
+            else if (arguments[0].Type == runtime.ValueType.Double)
+            {
+                return new Value(arguments[0].Double);
+            }
+            else if (arguments[0].Type == runtime.ValueType.Character)
+            {
+                return new Value(arguments[0].Character);
+            }
+            return Value.Null;
         }
 
-        private Value Clone(Value argument)
+        private static Value Clone(Value argument)
         {
             Value val = new Value(new List<Value>());
             for (int i = 0; i < argument.Array.Count; i++)

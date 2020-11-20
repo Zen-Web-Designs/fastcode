@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 namespace fastcode.flib
 {
+    public delegate void DebuggerCommand(params string[] arguments);
+
     class Debugger : Library
     {
         Interpreter interpreter;
@@ -11,6 +13,8 @@ namespace fastcode.flib
         Stack<DateTime> timerLaps;
         Dictionary<string,FunctionStructure> userFunctions;
         Dictionary<string, BuiltInFunction> builtInFunctions;
+
+        public Dictionary<string, DebuggerCommand> debuggerCommands;
 
         public bool RequestDebugInterrupt { get; private set; }
 
@@ -21,6 +25,22 @@ namespace fastcode.flib
             this.builtInFunctions = builtInFunctions;
             this.timerLaps = new Stack<DateTime>();
             this.RequestDebugInterrupt = false;
+            this.debuggerCommands = new Dictionary<string, DebuggerCommand>();
+            debuggerCommands.Add("callstack", PrintCallstack);
+            debuggerCommands.Add("watch", PrintWatch);
+            debuggerCommands.Add("functions", PrintFunctionList);
+        }
+
+        bool hasFlag(string[] args,string flag)
+        {
+            foreach(string arg in args)
+            {
+                if(arg.Trim() == flag)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
@@ -68,13 +88,16 @@ namespace fastcode.flib
             return Value.Null;
         }
 
-        public void PrintWatch()
+        public void PrintWatch(params string[] args)
         {
             PrintLine();
             PrintRow("Identifier", "Accessibility", "Type", "Value");
-            foreach (string id in interpreter.GlobalVariables.Keys)
+            if (hasFlag(args, "-g"))
             {
-                PrintRow(id, "GLOBAL", interpreter.GlobalVariables[id].Type.ToString(), interpreter.GlobalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
+                foreach (string id in interpreter.GlobalVariables.Keys)
+                {
+                    PrintRow(id, "GLOBAL", interpreter.GlobalVariables[id].Type.ToString(), interpreter.GlobalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
+                }
             }
             foreach (ControlStructure structure in callStack.ToArray())
             {
@@ -92,7 +115,7 @@ namespace fastcode.flib
             }
         }
 
-        public void PrintCallstack()
+        public void PrintCallstack(params string[] args)
         {
             Console.WriteLine("Stack Size: " + (callStack.Count));
             PrintLine();
@@ -113,7 +136,7 @@ namespace fastcode.flib
             PrintLine();
         }
 
-        public void PrintFunctionList()
+        public void PrintFunctionList(params string[] args)
         {
             Console.WriteLine(userFunctions.Count + " availible user-defined functions.");
             Console.WriteLine(builtInFunctions.Count + " availible built-in functions.");
@@ -141,18 +164,6 @@ namespace fastcode.flib
                     RequestDebugInterrupt = false;
                     break;
                 }
-                else if (input == "callstack")
-                {
-                    PrintCallstack();
-                }
-                else if (input == "watch")
-                {
-                    PrintWatch();
-                }
-                else if(input == "functions")
-                {
-                    PrintFunctionList();
-                }
                 else if(input == "next")
                 {
                     Console.WriteLine("Fastcode has executed the next statement and halted further execution at ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn + 1) + ".");
@@ -161,7 +172,15 @@ namespace fastcode.flib
                 }
                 else
                 {
-                    Console.WriteLine("Unrecognized debugger command.");
+                    string[] args = input.Split(' ');
+                    if (debuggerCommands.ContainsKey(args[0]))
+                    {
+                        debuggerCommands[args[0]].Invoke(args);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Unrecognized debugger command.");
+                    }
                 }
             }
         }

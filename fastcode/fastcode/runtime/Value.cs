@@ -57,6 +57,10 @@ namespace fastcode.runtime
                     {
                         ret += "\'" + Array[i].ToString() + "\'";
                     }
+                    else
+                    {
+                        ret += Array[i].ToString();
+                    }
                     if(i != Array.Count-1)
                     {
                         ret += ",";
@@ -177,7 +181,7 @@ namespace fastcode.runtime
             }
             else
             {
-                if (a.Type == ValueType.String)
+                if (a.Type != ValueType.Double)
                     throw new InvalidOperandTypeException();
 
                 switch (token)

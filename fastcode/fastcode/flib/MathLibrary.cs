@@ -10,6 +10,9 @@ namespace fastcode.flib
         {
             functions.Add("printPolynomial", PrintPolynomial);
             functions.Add("parsePolynomial", ParsePolynomial);
+            functions.Add("evaluatePolynomial", EvaluatePolynomial);
+            functions.Add("multiplyPolynomial", MultiplyPolynomial);
+            functions.Add("polymul", MultiplyPolynomial);
         }
 
         private static bool IsPolynomial(Value val)
@@ -26,6 +29,52 @@ namespace fastcode.flib
                 }
             }
             return true;
+        }
+
+        public static Value EvaluatePolynomial(List<Value> arguments)
+        {
+            if (arguments.Count != 2)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (!IsPolynomial(arguments[0]) || arguments[1].Type != runtime.ValueType.Double)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            double total = 0;
+            for (int i = 0; i < arguments[0].Array.Count; i++)
+            {
+                if (arguments[0].Array[i].Double != 0)
+                {
+                    total = total + Math.Pow(arguments[0].Array[i].Double * arguments[1].Double, i);
+                }
+            }
+            return new Value(total);
+        }
+
+        public static Value MultiplyPolynomial(List<Value> arguments)
+        {
+            if (arguments.Count != 2)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (!IsPolynomial(arguments[0]) || !IsPolynomial(arguments[1]))
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            List<Value> poly = new List<Value>(new Value[arguments[0].Array.Count + arguments[1].Array.Count-1]);
+            for (int i = 0; i < poly.Count; i++)
+            {
+                poly[i] = new Value(0);
+            }
+            for (int j = 0; j < arguments[0].Array.Count; j++)
+            {
+                for (int k = 0; k < arguments[1].Array.Count; k++)
+                {
+                    poly[j + k] = new Value((arguments[0].Array[j].Double * arguments[1].Array[k].Double) + poly[j+k].Double);
+                }
+            }
+            return new Value(poly);
         }
 
         public static Value ParsePolynomial(List<Value> arguments)

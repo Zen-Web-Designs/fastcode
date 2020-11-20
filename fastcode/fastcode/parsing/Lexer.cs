@@ -78,25 +78,6 @@ namespace fastcode.parsing
             return lastChar;
         }
 
-        //reads the line at a cursor position, useful for when you have if's, elses, functions,etc...
-        public string ReadLineAt(Marker marker)
-        {
-            Marker temp = Position;
-            marker.Index--;
-            ShiftCurrentPosition(marker);
-            string line = string.Empty;
-
-            do
-            {
-                line += ReadChar();
-            }
-            while (lastChar != '\n' && lastChar != EOF);
-
-            line.Remove(line.Length - 1);
-            ShiftCurrentPosition(temp);
-            return line;
-        }
-
         //tokenization stuff
         public Token ReadNextToken()
         {
@@ -105,8 +86,6 @@ namespace fastcode.parsing
             {
                 ReadChar(); //takes a character out of the buffer
             }
-
-            Marker TokenMarker = Position; //record start of token
 
             //check if the token is an identifier or keyword by verifying whether the first character is a letter
             if(char.IsLetter(lastChar))
@@ -146,6 +125,8 @@ namespace fastcode.parsing
                         return Token.Stop;
                     case "import":
                         return Token.Import;
+                    case "global":
+                        return Token.Global;
                     case "rem":
                         while(lastChar != '\n')
                         {

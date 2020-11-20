@@ -12,17 +12,42 @@ namespace fastcode.flib
     {
         public string WorkingDirectory { get; set; }
 
+        public WinInterop(string workingDir)
+        {
+            this.WorkingDirectory = workingDir;
+        }
+
         public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
-            WorkingDirectory = Program.CurrentDicectory;
             functions.Add("system", runCommand);
             functions.Add("cmd", runCommand);
             functions.Add("getWorkingDir", GetWorkingDirectory);
             functions.Add("setWorkingDir", SetWorkingDirectory);
+            functions.Add("cd", SetWorkingDirectory);
             functions.Add("readFileText", readFileText);
             functions.Add("readFileLines", readFileLines);
             functions.Add("writeFileText", writeFileText);
             functions.Add("writeFileLines", writeFileLines);
+            functions.Add("fileExists", fileExists);
+            functions.Add("dirExists", directoryExists);
+            functions.Add("directoryExists", directoryExists);
+            functions.Add("mkFile", makeFile);
+            functions.Add("makeFile", makeFile);
+            functions.Add("deleteFile", deleteFile);
+            functions.Add("delFile", deleteFile);
+            functions.Add("remFile", deleteFile);
+            functions.Add("listFiles", listFiles);
+            functions.Add("listDirectories", listDirectories);
+            functions.Add("listDirs", listDirectories);
+        }
+
+        private string ascertainFilePath(string reqPath)
+        {
+            if(reqPath.Contains(":\\"))
+            {
+                return reqPath;
+            }
+            return WorkingDirectory + "\\"+ reqPath;
         }
 
         public Value runCommand(List<Value> arguments)
@@ -67,14 +92,14 @@ namespace fastcode.flib
             {
                 if (e.Data != null)
                 {
-                    output.AppendLine(e.Data);
+                    output.AppendLine(e.Data.Trim());
                 }
             };
             CMDInstance.ErrorDataReceived += (object sender, DataReceivedEventArgs e) =>
             {
                 if (e.Data != null)
                 { 
-                    output.AppendLine(e.Data);
+                    output.AppendLine(e.Data.Trim());
                 }
             };
             CMDInstance.Start();
@@ -117,7 +142,7 @@ namespace fastcode.flib
             {
                 throw new Exception("An invalid argument type has been passed into a built in function.");
             }
-            return new Value(File.ReadAllText(arguments[0].String));
+            return new Value(File.ReadAllText(ascertainFilePath(arguments[0].String)));
         }
 
         public Value readFileLines(List<Value> arguments)
@@ -131,7 +156,7 @@ namespace fastcode.flib
                 throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             Value lines = new Value(new List<Value>());
-            foreach(string line in File.ReadAllLines(arguments[0].String))
+            foreach(string line in File.ReadAllLines(ascertainFilePath(arguments[0].String)))
             {
                 lines.Array.Add(new Value(line));
             }
@@ -148,7 +173,7 @@ namespace fastcode.flib
             {
                 throw new Exception("An invalid argument type has been passed into a built in function.");
             }
-            File.WriteAllText(arguments[0].String, arguments[1].String);
+            File.WriteAllText(ascertainFilePath(arguments[0].String), arguments[1].String);
             return Value.Null;
         }
 
@@ -169,8 +194,112 @@ namespace fastcode.flib
                 lines[i] = value.ToString();
                 i++;
             }
-            File.WriteAllLines(arguments[0].String, lines);
+            File.WriteAllLines(ascertainFilePath(arguments[0].String), lines);
             return Value.Null;
+        }
+
+        public Value fileExists(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            return new Value(File.Exists(ascertainFilePath(arguments[0].String)) ? 1 : 0);
+        }
+
+        public Value directoryExists(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            return new Value(Directory.Exists(ascertainFilePath(arguments[0].String)) ? 1 : 0);
+        }
+
+        public Value makeFile(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            File.Create(ascertainFilePath(arguments[0].String)).Close();
+            return Value.Null;
+        }
+
+        public Value deleteFile(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            File.Delete(ascertainFilePath(arguments[0].String));
+            return Value.Null;
+        }
+
+        public Value listFiles(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                if (arguments.Count == 0)
+                {
+                    arguments.Add(new Value(""));
+                }
+                else
+                {
+                    throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+                }
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            List<Value> fileList = new List<Value>();
+            foreach(string file in Directory.GetFiles(ascertainFilePath(arguments[0].String)))
+            {
+                fileList.Add(new Value(file));
+            }
+            return new Value(fileList);
+        }
+
+        public Value listDirectories(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                if (arguments.Count == 0)
+                {
+                    arguments.Add(new Value(""));
+                }
+                else
+                {
+                    throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+                }
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            List<Value> dirList = new List<Value>();
+            foreach (string directory in Directory.GetDirectories(ascertainFilePath(arguments[0].String)))
+            {
+                dirList.Add(new Value(directory));
+            }
+            return new Value(dirList);
         }
     }
 }

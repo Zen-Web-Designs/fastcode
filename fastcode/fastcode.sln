@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testcases", "testcases", "{
 		recursion.txt = recursion.txt
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Launcher", "Launcher\Launcher.csproj", "{AB9F6125-A6B4-4EDF-9A4B-0D32381BD5D7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -25,6 +27,10 @@ Global
 		{EA0A101D-9817-4D19-9334-824894DD1163}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA0A101D-9817-4D19-9334-824894DD1163}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EA0A101D-9817-4D19-9334-824894DD1163}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AB9F6125-A6B4-4EDF-9A4B-0D32381BD5D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AB9F6125-A6B4-4EDF-9A4B-0D32381BD5D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AB9F6125-A6B4-4EDF-9A4B-0D32381BD5D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AB9F6125-A6B4-4EDF-9A4B-0D32381BD5D7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

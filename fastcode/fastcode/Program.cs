@@ -9,8 +9,27 @@ namespace fastcode
     class Program
     {
         public static List<string> Lines = new List<string>();
-        public static string CurrentDicectory = "C:\\Windows\\System32";
         static ConsoleColor defaultColor;
+
+        static void PrintTitle()
+        {
+            Console.WriteLine(" ________                      __       ______                   __           ");
+            Console.WriteLine("|        \\                    |  \\     /      \\                 |  \\          ");
+            Console.WriteLine("| $$$$$$$$______    _______  _| $$_   |  $$$$$$\\  ______    ____| $$  ______  ");
+            Console.WriteLine("| $$__   |      \\  /       \\|   $$ \\  | $$   \\$$ /      \\  /      $$ /      \\ ");
+            Console.WriteLine("| $$  \\   \\$$$$$$\\|  $$$$$$$ \\$$$$$$  | $$      |  $$$$$$\\|  $$$$$$$|  $$$$$$\\");
+            Console.WriteLine("| $$$$$  /      $$ \\$$    \\   | $$ __ | $$   __ | $$  | $$| $$  | $$| $$    $$");
+            Console.WriteLine("| $$    |  $$$$$$$ _\\$$$$$$\\  | $$|  \\| $$__/  \\| $$__/ $$| $$__| $$| $$$$$$$$");
+            Console.WriteLine("| $$     \\$$    $$|       $$   \\$$  $$ \\$$    $$ \\$$    $$ \\$$    $$ \\$$     \\");
+            Console.WriteLine(" \\$$      \\$$$$$$$ \\$$$$$$$     \\$$$$   \\$$$$$$   \\$$$$$$   \\$$$$$$$  \\$$$$$$$");
+            Console.WriteLine("FASTCODE prototype version 1, Written by Michael Wang\n");
+        }
+
+        static void PrintHelp()
+        {
+            Console.WriteLine("Synopsis:");
+            Console.WriteLine("A perfect blend of C, Java, and Python tailored for those who desire a simple yet powerful programming language.");
+        }
 
         static void Main(string[] args)
         {
@@ -18,8 +37,7 @@ namespace fastcode
             defaultColor = Console.ForegroundColor;
             if (args.Length == 0)
             {
-                CurrentDicectory = Directory.GetCurrentDirectory();
-                Console.WriteLine("FASTCODE prototype version 1\nWritten by Michael Wang\n");
+                PrintTitle();
                 while (true)
                 {
                     Console.Write((Lines.Count + 1) + ": ");
@@ -33,7 +51,7 @@ namespace fastcode
                             if (key.Key == ConsoleKey.Y)
                             {
                                 Console.WriteLine();
-                                run(string.Join("\n", Lines));
+                                run(string.Join("\n", Lines),Directory.GetCurrentDirectory());
                                 Console.WriteLine();
                                 break;
                             }
@@ -87,10 +105,14 @@ namespace fastcode
                 if (File.Exists(args[0]))
                 {
                     FileInfo info = new FileInfo(args[0]);
-                    CurrentDicectory = info.DirectoryName;
                     string code = File.ReadAllText(info.FullName);
                     Lines = code.Split('\n').ToList();
-                    run(code);
+                    run(code,info.DirectoryName);
+                }
+                else if(args[0] == "help" || args[0] == "?" || args[0] == "-h")
+                {
+                    PrintTitle();
+                    PrintHelp();
                 }
                 else
                 {
@@ -101,9 +123,9 @@ namespace fastcode
             }
         }
 
-        static void run(string source)
+        static void run(string source, string workingDir)
         {
-            Interpreter interpreter = new Interpreter(Console.Out,Console.In,source);
+            Interpreter interpreter = new Interpreter(Console.Out,Console.In,source, workingDir);
             //interpreter.Start();
             try
             {
