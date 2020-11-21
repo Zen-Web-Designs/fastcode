@@ -719,7 +719,7 @@ namespace fastcode.runtime
                     {
                         ReadNextToken();
                         ReadNextToken();
-                        Value v = EvaluateNextExpression();
+                        Value v = EvaluateNextExpression(0,current);
                         if (v == null)
                         {
                             return null;
@@ -835,7 +835,7 @@ namespace fastcode.runtime
                         {
                             ReadNextToken();
                             ReadNextToken();
-                            Value v = EvaluateNextExpression();
+                            Value v = EvaluateNextExpression(0,current);
                             if (v == null)
                             {
                                 return null;
@@ -874,7 +874,7 @@ namespace fastcode.runtime
             else if(lastToken == Token.OpenParenthesis) //it's an expression
             {
                 ReadNextToken();
-                val = EvaluateNextExpression(); //call the evaluate function
+                val = EvaluateNextExpression(0,current); //call the evaluate function
                 if(val == null)
                 {
                     return null;
@@ -894,7 +894,7 @@ namespace fastcode.runtime
                     }
                     else
                     {
-                        Value v = EvaluateNextExpression();
+                        Value v = EvaluateNextExpression(0,current);
                         if (v == null)
                         {
                             return null; //this is how to escape the recursive function when a function needs to be evaluated through the main loop first
