@@ -11,6 +11,8 @@ namespace fastcode.flib
     class WinInterop : Library
     {
         public string WorkingDirectory { get; set; }
+        Interpreter interpreter;
+
 
         public WinInterop(string workingDir)
         {
@@ -19,12 +21,10 @@ namespace fastcode.flib
 
         public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
-            functions.Add("system", runCommand);
-            functions.Add("cmd", runCommand);
-            functions.Add("getWorkingDir", GetWorkingDirectory);
-            functions.Add("setWorkingDir", SetWorkingDirectory);
-            functions.Add("cd", SetWorkingDirectory);
-            functions.Add("readFileText", readFileText);
+            this.interpreter = interpreter;
+            functions.Add("system", runCommand); Help.addTopic("system", "system,cmd,windows", "*param array","Runs a windows system command.");
+            functions.Add("cmd", runCommand); Help.addTopic("cmd", "system,cmd,windows", "*param array", "Runs a windows system command.");
+            functions.Add("readFileText", readFileText); 
             functions.Add("readFileLines", readFileLines);
             functions.Add("writeFileText", writeFileText);
             functions.Add("writeFileLines", writeFileLines);
@@ -36,14 +36,27 @@ namespace fastcode.flib
             functions.Add("deleteFile", deleteFile);
             functions.Add("delFile", deleteFile);
             functions.Add("remFile", deleteFile);
+            functions.Add("delDir", RemoveDirectory);
+            functions.Add("removeDir", RemoveDirectory);
+            functions.Add("remDir", RemoveDirectory);
             functions.Add("listFiles", listFiles);
             functions.Add("listDirectories", listDirectories);
             functions.Add("listDirs", listDirectories);
+            interpreter.GlobalVariables.Add("cd", new Value(WorkingDirectory));
         }
 
         private string ascertainFilePath(string reqPath)
         {
-            if(reqPath.Contains(":\\"))
+            if(interpreter.GlobalVariables["cd"].Type != runtime.ValueType.String)
+            {
+                throw new Exception("Working Directory must be set to a string type.");
+            }
+            if(!Directory.Exists(interpreter.GlobalVariables["cd"].String))
+            {
+                throw new Exception("Working directory must be set to a valid directory.");
+            }
+            WorkingDirectory = interpreter.GlobalVariables["cd"].String;
+            if (reqPath.Contains(":\\"))
             {
                 return reqPath;
             }
@@ -107,29 +120,6 @@ namespace fastcode.flib
             CMDInstance.BeginErrorReadLine();
             CMDInstance.WaitForExit();
             return new Value(output.ToString());
-        }
-
-        public Value GetWorkingDirectory(List<Value> arguments)
-        {
-            if (arguments.Count != 0)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            return new Value(WorkingDirectory);
-        }
-
-        public Value SetWorkingDirectory(List<Value> arguments)
-        {
-            if (arguments.Count != 1)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            if (arguments[0].Type != runtime.ValueType.String)
-            {
-                throw new Exception("An invalid argument type has been passed into a built in function.");
-            }
-            WorkingDirectory = arguments[0].String;
-            return Value.Null;
         }
 
         public Value readFileText(List<Value> arguments)
@@ -238,6 +228,20 @@ namespace fastcode.flib
             return Value.Null;
         }
 
+        public Value makeDirectory(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            Directory.CreateDirectory(ascertainFilePath(arguments[0].String));
+            return Value.Null;
+        }
+
         public Value deleteFile(List<Value> arguments)
         {
             if (arguments.Count != 1)
@@ -249,6 +253,27 @@ namespace fastcode.flib
                 throw new Exception("An invalid argument type has been passed into a built in function.");
             }
             File.Delete(ascertainFilePath(arguments[0].String));
+            return Value.Null;
+        }
+
+        public Value RemoveDirectory(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            foreach(string file in Directory.GetFiles(ascertainFilePath(arguments[0].String)))
+            {
+                File.Delete(file);
+            }
+            foreach(string directory in Directory.GetDirectories(ascertainFilePath(arguments[0].String)))
+            {
+                invokeBuiltInFunction(RemoveDirectory, new Value(directory));
+            }
             return Value.Null;
         }
 

@@ -125,7 +125,7 @@ namespace fastcode
 
         static void run(string source, string workingDir)
         {
-            Interpreter interpreter = new Interpreter(Console.Out,Console.In,source, workingDir);
+            Interpreter interpreter = new Interpreter(Console.Out, Console.In, source, workingDir);
             //interpreter.Start();
             try
             {

@@ -5,6 +5,8 @@
         Unkown, //The token has yet to be identified. The function will not return an Unkown Token, but throw an exception instread.
         
         Global,
+        Abstract,
+
         Identifier,  //stuff for refrences
         Value,
         Function,
@@ -47,6 +49,7 @@
         Or,
         And,
         Not,
+        Refrence,
 
         EndOfFile //end of stream marker
     }

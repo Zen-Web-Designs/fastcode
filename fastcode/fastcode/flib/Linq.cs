@@ -21,7 +21,26 @@ namespace fastcode.flib
             functions.Add("delete", Delete);
             functions.Add("newArray", Initialize);
             functions.Add("initArray", Initialize);
-            functions.Add("array", Initialize);
+            functions.Add("concat", Concatonate);
+            functions.Add("join", Concatonate);
+            functions.Add("reverse", Reverse);
+        }
+
+        public static Value Concatonate(List<Value> arguments)
+        {
+            List<Value> values = new List<Value>();
+            foreach(Value array in arguments)
+            {
+                if(array.Type == runtime.ValueType.Array)
+                {
+                    throw new Exception("An invalid argument type has been passed into a built in function.");
+                }
+                foreach(Value item in values)
+                {
+                    values.Add(invokeBuiltInFunction(StandardLibrary.Clone, item));
+                }
+            }
+            return new Value(values);
         }
 
         public static Value Initialize(List<Value> arguments)
@@ -67,6 +86,25 @@ namespace fastcode.flib
             }
             arguments[0].Array.Clear();
             return Value.Null;
+        }
+
+        public static Value Reverse(List<Value> arguments)
+        {
+            if (arguments.Count != 1)
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if (arguments[0].Type != runtime.ValueType.Array)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            for (int i = 0; i < (int)Math.Ceiling((double)arguments[0].Array.Count/2); i++)
+            {
+                Value temp = arguments[0].Array[i];
+                arguments[0].Array[i] = arguments[0].Array[arguments[0].Array.Count - 1 - i];
+                arguments[0].Array[arguments[0].Array.Count - 1 - i] = temp;
+            }
+            return arguments[0];
         }
 
         public static Value Append(List<Value> arguments)

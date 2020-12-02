@@ -1,6 +1,7 @@
 ﻿using fastcode.runtime;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace fastcode.flib
 {
@@ -8,22 +9,23 @@ namespace fastcode.flib
 
     class Debugger : Library
     {
+        private TextWriter OutputWriter;
+        private TextReader InputReader;
+
         Interpreter interpreter;
-        Stack<ControlStructure> callStack;
-        Stack<DateTime> timerLaps;
-        Dictionary<string,FunctionStructure> userFunctions;
+        Stack<CallFrame> callStack;
+        Dictionary<string,FunctionFrame> userFunctions;
         Dictionary<string, BuiltInFunction> builtInFunctions;
 
         public Dictionary<string, DebuggerCommand> debuggerCommands;
 
         public bool RequestDebugInterrupt { get; private set; }
 
-        public Debugger(ref Stack<ControlStructure> callStack, ref Dictionary<string, FunctionStructure> userFunctions, ref Dictionary<string, BuiltInFunction> builtInFunctions)
+        public Debugger(ref Stack<CallFrame> callStack, ref Dictionary<string, FunctionFrame> userFunctions, ref Dictionary<string, BuiltInFunction> builtInFunctions)
         {
             this.callStack = callStack;
             this.userFunctions = userFunctions;
             this.builtInFunctions = builtInFunctions;
-            this.timerLaps = new Stack<DateTime>();
             this.RequestDebugInterrupt = false;
             this.debuggerCommands = new Dictionary<string, DebuggerCommand>();
             debuggerCommands.Add("callstack", PrintCallstack);
@@ -46,9 +48,12 @@ namespace fastcode.flib
         public override void Install(ref Dictionary<string, BuiltInFunction> functions, Interpreter interpreter)
         {
             this.interpreter = interpreter;
+            OutputWriter = interpreter.Output;
+            InputReader = interpreter.Input;
             functions.Add("assert", Assert);
             functions.Add("breakpoint", Breakpoint);
         }
+
 
         public Value Assert(List<Value> arguments)
         {
@@ -73,18 +78,8 @@ namespace fastcode.flib
             {
                 throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
             }
-            Console.WriteLine("A break point has been hit on ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn+1)+ ".");
+            OutputWriter.WriteLine("A break point has been hit on ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn+1)+ ".");
             RequestDebugInterrupt = true;
-            return Value.Null;
-        }
-
-        public Value StartTimer(List<Value> arguments)
-        {
-            if (arguments.Count != 0)
-            {
-                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
-            }
-            timerLaps.Push(DateTime.Now);
             return Value.Null;
         }
 
@@ -99,17 +94,14 @@ namespace fastcode.flib
                     PrintRow(id, "GLOBAL", interpreter.GlobalVariables[id].Type.ToString(), interpreter.GlobalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
                 }
             }
-            foreach (ControlStructure structure in callStack.ToArray())
+            foreach (CallFrame structure in callStack.ToArray())
             {
-                if (structure.GetType() == typeof(FunctionStructure))
+                if (structure.GetType() == typeof(FunctionFrame))
                 {
-                    FunctionStructure function = (FunctionStructure)structure;
-                    if (function.Identifier != "MAINSTRUCTURE")
+                    FunctionFrame function = (FunctionFrame)structure;
+                    foreach (string id in function.LocalVariables.Keys)
                     {
-                        foreach (string id in function.LocalVariables.Keys)
-                        {
-                            PrintRow(id, "LOCAL(" + function.Identifier + ")", function.LocalVariables[id].Type.ToString(), function.LocalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
-                        }
+                        PrintRow(id, "LOCAL(" + function.Identifier + ")", function.LocalVariables[id].Type.ToString(), function.LocalVariables[id].ToString().Replace("\r\n", "").Replace("\n", ""));
                     }
                 }
             }
@@ -117,15 +109,15 @@ namespace fastcode.flib
 
         public void PrintCallstack(params string[] args)
         {
-            Console.WriteLine("Stack Size: " + (callStack.Count));
+            OutputWriter.WriteLine("Stack Size: " + (callStack.Count));
             PrintLine();
             PrintRow("Type", "Identifier", "Arguments");
             PrintLine();
-            foreach (ControlStructure structure in callStack.ToArray())
+            foreach (CallFrame structure in callStack.ToArray())
             {
-                if (structure.GetType() == typeof(FunctionStructure))
+                if (structure.GetType() == typeof(FunctionFrame))
                 {
-                    FunctionStructure function = (FunctionStructure)structure;
+                    FunctionFrame function = (FunctionFrame)structure;
                     PrintRow("Function", function.Identifier, function.ExpectedArguments.ToString());
                 }
                 else
@@ -138,8 +130,8 @@ namespace fastcode.flib
 
         public void PrintFunctionList(params string[] args)
         {
-            Console.WriteLine(userFunctions.Count + " availible user-defined functions.");
-            Console.WriteLine(builtInFunctions.Count + " availible built-in functions.");
+            OutputWriter.WriteLine(userFunctions.Count + " availible user-defined functions.");
+            OutputWriter.WriteLine(builtInFunctions.Count + " availible built-in functions.");
             PrintLine();
             PrintRow("Identifier","Type");
             PrintLine();
@@ -147,7 +139,7 @@ namespace fastcode.flib
             {
                 PrintRow(id, "imported from flib");
             }
-            foreach(FunctionStructure function in userFunctions.Values)
+            foreach(FunctionFrame function in userFunctions.Values)
             {
                 PrintRow(function.Identifier, "user defined");
             }
@@ -157,8 +149,8 @@ namespace fastcode.flib
         {
             while (true)
             {
-                Console.Write("debuger>");
-                string input = Console.ReadLine();
+                OutputWriter.Write("debuger>");
+                string input = InputReader.ReadLine();
                 if (input == string.Empty || input == "continue")
                 {
                     RequestDebugInterrupt = false;
@@ -166,7 +158,7 @@ namespace fastcode.flib
                 }
                 else if(input == "next")
                 {
-                    Console.WriteLine("Fastcode has executed the next statement and halted further execution at ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn + 1) + ".");
+                    OutputWriter.WriteLine("Fastcode has executed the next statement and halted further execution at ROW: " + (interpreter.Position.Row) + ", COL: " + (interpreter.Position.Collumn + 1) + ".");
                     RequestDebugInterrupt = true;
                     return;
                 }
@@ -179,19 +171,20 @@ namespace fastcode.flib
                     }
                     else
                     {
-                        Console.WriteLine("Unrecognized debugger command.");
+                        OutputWriter.WriteLine("Unrecognized debugger command.");
                     }
                 }
             }
         }
 
         //table stuff copied from stack overflow
-        static void PrintLine()
+        void PrintLine()
         {
-            Console.WriteLine(new string('-', Console.BufferWidth-1));
+            OutputWriter.WriteLine(new string('-', Console.BufferWidth - 1));
+            OutputWriter.WriteLine(new string('-', 25));
         }
 
-        static void PrintRow(params string[] columns)
+        void PrintRow(params string[] columns)
         {
             int width = (Console.BufferWidth - columns.Length-1) / columns.Length;
             string row = "|";
@@ -200,7 +193,7 @@ namespace fastcode.flib
             {
                 row += AlignCentre(column, width) + "|";
             }
-            Console.WriteLine(row);
+            OutputWriter.WriteLine(row);
         }
 
         static string AlignCentre(string text, int width)

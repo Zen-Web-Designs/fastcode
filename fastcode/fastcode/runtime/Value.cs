@@ -10,6 +10,7 @@ namespace fastcode.runtime
         Double,
         String,
         Character,
+        Expression,
         Null
     }
 
@@ -25,27 +26,32 @@ namespace fastcode.runtime
         public double Double { get; private set; }
         public char Character { get; private set; }
         public List<Value> Array { get; set; } //adding arrays
+        public Expression Expression { get; private set; }
 
         public override string ToString()
         {
-            if(Type == ValueType.Double)
+            if (Type == ValueType.Double)
             {
                 return Double.ToString();
             }
-            else if(Type == ValueType.String)
+            else if (Type == ValueType.String)
             {
                 return String;
             }
-            else if(Type == ValueType.Character)
+            else if (Type == ValueType.Character)
             {
                 return Character.ToString();
+            }
+            else if(Type == ValueType.Expression)
+            {
+                return Expression.ToString();
             }
             else if(Type == ValueType.Array)
             {
                 string ret = "[";
                 for (int i = 0; i < Array.Count; i++)
                 {
-                    if(Array[i].Type == ValueType.Double|| Array[i].Type == ValueType.Double || Array[i].Type == ValueType.Array)
+                    if(Array[i].Type == ValueType.Double|| Array[i].Type == ValueType.Double || Array[i].Type == ValueType.Array || Array[i].Type == ValueType.Expression)
                     {
                         ret += Array[i].ToString();
                     }
@@ -89,6 +95,12 @@ namespace fastcode.runtime
             this.Character = c;
         }
 
+        public Value(Expression expression)
+        {
+            this.Type = ValueType.Expression;
+            this.Expression = expression;
+        }
+
         public Value(List<Value> array)
         {
             this.Type = ValueType.Array;
@@ -106,22 +118,36 @@ namespace fastcode.runtime
 
         public Value PerformUniaryOperation(Token token)
         {
-            if(Type != ValueType.Double)
+            if((Type != ValueType.Double) && (Type != ValueType.Expression))
             {
                 throw new InvalidOperandTypeException();
             }
-            switch (token)
+            switch (Type)
             {
-                case Token.Plus:
-                    return new Value(Double);
-                case Token.Minus:
-                    return new Value(-Double);
-                case Token.Not:
-                    if(Double == 0)
+                case ValueType.Double:
+                    switch (token)
                     {
-                        return new Value(1);
+                        case Token.Plus:
+                            return new Value(Double);
+                        case Token.Minus:
+                            return new Value(-Double);
+                        case Token.Not:
+                            if (Double == 0)
+                            {
+                                return new Value(1);
+                            }
+                            return new Value(0);
                     }
-                    return new Value(0);
+                    break;
+                case ValueType.Expression:
+                    switch(token)
+                    {
+                        case Token.Plus:
+                            return new Value(Expression);
+                        case Token.Minus:
+                            return new Value(-Expression);
+                    }
+                    break;
             }
             throw new ArgumentException("Unrecognized operand token.");
         }
@@ -139,7 +165,31 @@ namespace fastcode.runtime
                 {
                     return new Value(a.Character + b.String);
                 }
-                if (token == Token.Equals)
+                else if ((a.Type == ValueType.Expression && b.Type == ValueType.Double) ||( a.Type == ValueType.Double && b.Type == ValueType.Expression))
+                {
+                    Expression expression;
+                    double d;
+                    if(a.Type == ValueType.Expression)
+                    {
+                        expression = a.Expression;
+                        d = b.Double;
+                    }
+                    else
+                    {
+                        expression = b.Expression;
+                        d = a.Double;
+                    }
+                    switch (token)
+                    {
+                        case Token.Plus: return new Value(expression + new Expression(d));
+                        case Token.Minus: return new Value(expression - new Expression(d));
+                        case Token.Asterisk: return new Value(expression * new Expression(d));
+                        case Token.Slash: return new Value(expression / new Expression(d));
+                        case Token.Modulous: return new Value(expression % new Expression(d));
+                        case Token.Caret: return new Value(expression ^ d);
+                    }
+                }
+                else if (token == Token.Equals)
                 {
                     return new Value(0);
                 }
@@ -158,6 +208,8 @@ namespace fastcode.runtime
                     return new Value(a.String + b.String);
                 else if (a.Type == ValueType.Character)
                     return new Value((char)(a.Character + b.Character));
+                else if (a.Type == ValueType.Expression)
+                    return new Value(a.Expression + b.Expression);
             }
             else if (token == Token.Equals)
             {
@@ -167,6 +219,8 @@ namespace fastcode.runtime
                     return new Value(a.String == b.String ? 1 : 0);
                 else if (a.Type == ValueType.Character)
                     return new Value(a.Character == b.Character ? 1 : 0);
+                else if (a.Type == ValueType.Expression)
+                    return new Value(a.Expression == b.Expression ? 1 : 0);
                 else if (a.Type == ValueType.Null)
                     return new Value(a.Type == ValueType.Null ? 1 : 0);
             }
@@ -178,28 +232,43 @@ namespace fastcode.runtime
                     return new Value(a.String == b.String ? 0 : 1);
                 else if (a.Type == ValueType.Null)
                     return new Value(a.Type == ValueType.Null ? 0 : 1);
+                else if (a.Type == ValueType.Expression)
+                    return new Value(a.Expression == b.Expression ? 0 : 1);
             }
             else
             {
-                if (a.Type != ValueType.Double)
-                    throw new InvalidOperandTypeException();
-
-                switch (token)
+                switch (a.Type) 
                 {
-                    case Token.Minus: return new Value(a.Double - b.Double);
-                    case Token.Asterisk: return new Value(a.Double * b.Double);
-                    case Token.Slash: return new Value(a.Double / b.Double);
-                    case Token.Caret: return new Value(Math.Pow(a.Double, b.Double));
-                    case Token.Modulous: return new Value(a.Double % b.Double);
-                    case Token.Less: return new Value(a.Double < b.Double ? 1 : 0);
-                    case Token.More: return new Value(a.Double > b.Double ? 1 : 0);
-                    case Token.LessEqual: return new Value(a.Double <= b.Double ? 1 : 0);
-                    case Token.MoreEqual: return new Value(a.Double >= b.Double ? 1 : 0);
-                    case Token.And: return new Value((a.Double != 0) && (b.Double != 0) ? 1 : 0);
-                    case Token.Or: return new Value((a.Double != 0) || (b.Double != 0) ? 1 : 0);
+                    case ValueType.Double:
+                        switch (token)
+                        {
+                            case Token.Minus: return new Value(a.Double - b.Double);
+                            case Token.Asterisk: return new Value(a.Double * b.Double);
+                            case Token.Slash: return new Value(a.Double / b.Double);
+                            case Token.Caret: return new Value(Math.Pow(a.Double, b.Double));
+                            case Token.Modulous: return new Value(a.Double % b.Double);
+                            case Token.Less: return new Value(a.Double < b.Double ? 1 : 0);
+                            case Token.More: return new Value(a.Double > b.Double ? 1 : 0);
+                            case Token.LessEqual: return new Value(a.Double <= b.Double ? 1 : 0);
+                            case Token.MoreEqual: return new Value(a.Double >= b.Double ? 1 : 0);
+                            case Token.And: return new Value((a.Double != 0) && (b.Double != 0) ? 1 : 0);
+                            case Token.Or: return new Value((a.Double != 0) || (b.Double != 0) ? 1 : 0);
+                        }
+                        break;
+                    case ValueType.Expression:
+                        switch (token)
+                        {
+                            case Token.Minus: return new Value(a.Expression - b.Expression);
+                            case Token.Plus: return new Value(a.Expression + b.Expression);
+                            case Token.Asterisk: return new Value(a.Expression * b.Expression);
+                            case Token.Slash: return new Value(a.Expression / b.Expression);
+                            case Token.Modulous: return new Value(a.Expression % b.Expression);
+                        }
+                        break;
+                    default:
+                        throw new InvalidOperandTypeException();
                 }
             }
-
             throw new ArgumentException("Unrecognized operand token.");
         }
     }

@@ -127,6 +127,12 @@ namespace fastcode.parsing
                         return Token.Import;
                     case "global":
                         return Token.Global;
+                    case "abstract":
+                        return Token.Abstract;
+                    case "ref":
+                        return Token.Refrence;
+                    case "refrence":
+                        return Token.Refrence;
                     case "rem":
                         while(lastChar != '\n')
                         {
@@ -214,7 +220,9 @@ namespace fastcode.parsing
                         {
                             ReadChar();
                             token = Token.And;
+                            break;
                         }
+                        token = Token.Refrence;
                         break;
                     case '|':
                         if (Peek() == '|')

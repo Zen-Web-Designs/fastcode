@@ -27,17 +27,16 @@ namespace fastcode.runtime
         public Dictionary<string, Value> GlobalVariables { get; private set; } //dictionaries are used for fast access
 
         Dictionary<string, BuiltInFunction> builtInFunctions;
-        Dictionary<string, FunctionStructure> functions;
+        Dictionary<string, FunctionFrame> functions;
 
         Lexer lexer; //parsing aides
-        Token prevToken;
         Token lastToken;
         private Marker expressionMarker; //counts the start of the expresion
         private Marker keywordMarker; //start of keyword
 
         //this makes up our "call stack" for control structures. Also includes whiles and elses and that stuff rather than functions
-        Stack<ControlStructure> CallStack;
-        ControlStructure prevStructure;
+        Stack<CallFrame> CallStack;
+        CallFrame prevCallFrame;
         Debugger debugger;
         WinInterop winInterop;
 
@@ -52,8 +51,8 @@ namespace fastcode.runtime
             this.Input = input;
             this.GlobalVariables = new Dictionary<string, Value>();
             this.builtInFunctions = new Dictionary<string, BuiltInFunction>();
-            this.functions = new Dictionary<string, FunctionStructure>();
-            this.CallStack = new Stack<ControlStructure>();
+            this.functions = new Dictionary<string, FunctionFrame>();
+            this.CallStack = new Stack<CallFrame>();
             lexer = new Lexer(source);
             debugger = new Debugger(ref CallStack, ref functions, ref builtInFunctions);
             winInterop = new WinInterop(workingDir);
@@ -65,10 +64,13 @@ namespace fastcode.runtime
             builtInFunctions.Clear();
             CallStack.Clear();
             GlobalVariables.Clear();
-            CallStack.Push(new FunctionStructure("MAINSTRUCTURE"));
+            CallStack.Push(new FunctionFrame("MAINSTRUCTURE"));
             (new StandardLibrary()).Install(ref builtInFunctions, this);
             (new MathLibrary()).Install(ref builtInFunctions, this);
             (new Linq()).Install(ref builtInFunctions, this);
+            winInterop.Install(ref builtInFunctions, this);
+            debugger.Install(ref builtInFunctions, this);
+            builtInFunctions.Add("invoke", InvokeUserFunction);
             GlobalVariables["null"] = Value.Null;
             GlobalVariables["true"] = Value.True;
             GlobalVariables["false"] = Value.False;
@@ -124,16 +126,16 @@ namespace fastcode.runtime
             }
         }
 
-        FunctionStructure GetCurrentFunction()
+        FunctionFrame GetCurrentContext()
         {
-            Stack<ControlStructure> searched = new Stack<ControlStructure>();
-            FunctionStructure function = null;
+            Stack<CallFrame> searched = new Stack<CallFrame>();
+            FunctionFrame function = null;
             while (CallStack.Count > 0)
             {
                 searched.Push(CallStack.Pop());
-                if (searched.Peek().GetType() == typeof(FunctionStructure))
+                if (searched.Peek().GetType() == typeof(FunctionFrame))
                 {
-                    function = (FunctionStructure)searched.Peek();
+                    function = (FunctionFrame)searched.Peek();
                     break;
                 }
             }
@@ -144,7 +146,7 @@ namespace fastcode.runtime
             return function;
         }
 
-        void ReadTillControlStructureStart()
+        void readTillCallFrameStart()
         {
             while (lastToken != Token.OpenBrace)
             {
@@ -154,7 +156,7 @@ namespace fastcode.runtime
             ReadNextToken();
         }
 
-        void SkipControlStructure(int offset = 0, bool readtok=false)
+        void SkipCallFrame(int offset = 0, bool readtok=false)
         {
             int braceCount = offset; //skip open params, close params till it balances out
             do
@@ -173,6 +175,33 @@ namespace fastcode.runtime
             while (braceCount >= 0);
         }
 
+        //reads the next token
+        Token ReadNextToken()
+        {
+            lastToken = lexer.ReadNextToken();
+            return lastToken;
+        }
+
+        //Reads the next non-newline token
+        Token PeekNextToken()
+        {
+            Marker marker = (Marker)lexer.Position.Clone();
+            Token old = lastToken;
+            Value oldval = lexer.TokenValue;
+            string oldid = lexer.TokenIdentifier;
+            ReadNextToken();
+            while(lastToken == Token.Newline)
+            {
+                ReadNextToken();
+            }
+            Token tok = lastToken;
+            lastToken = old;
+            lexer.TokenValue = oldval;
+            lexer.TokenIdentifier = oldid;
+            lexer.ShiftCurrentPosition(marker);
+            return tok;
+        }
+
         //executes a single statement
         void ExecuteNextStatement()
         {
@@ -180,14 +209,18 @@ namespace fastcode.runtime
             expressionMarker = (Marker)lexer.Position.Clone();
             ReadNextToken();
             Value expr;
+            IfElifFrame prevElifFrame;
+            FunctionFrame functionFrame;
             switch (keyword)
             {
                 case Token.Global:
                     MatchToken(Token.Identifier);
-                    if(!GlobalVariables.ContainsKey(lexer.TokenIdentifier))
-                    {
-                        GlobalVariables.Add(lexer.TokenIdentifier, Value.Null);
-                    }
+                    GlobalVariables.Add(lexer.TokenIdentifier, Value.Null);
+                    ReadNextToken();
+                    break;
+                case Token.Abstract:
+                    MatchToken(Token.Identifier);
+                    GlobalVariables.Add(lexer.TokenIdentifier, new Value(new Expression(lexer.TokenIdentifier)));
                     ReadNextToken();
                     break;
                 case Token.Identifier:
@@ -199,26 +232,26 @@ namespace fastcode.runtime
                             throw new Exception("FastCode cannot write to a read only variable.");
                         }
                         ReadNextToken();
-                        Value v1 = EvaluateNextExpression();
-                        if(v1 == null)
+                        expr = EvaluateNextExpression();
+                        if(expr == null)
                         {
                             return;
                         }
                         if(GlobalVariables.ContainsKey(id))
                         {
-                            GlobalVariables[id] = v1;
+                            GlobalVariables[id] =expr;
                             break;
                         }
                         else
                         {
-                            FunctionStructure f = GetCurrentFunction();
-                            if (f.LocalVariables.ContainsKey(id))
+                            functionFrame = GetCurrentContext();
+                            if (functionFrame.LocalVariables.ContainsKey(id))
                             {
-                                f.LocalVariables[id] = v1;
+                                functionFrame.LocalVariables[id] = expr;
                             }
                             else
                             {
-                                f.LocalVariables.Add(id, v1);
+                                functionFrame.LocalVariables.Add(id, expr);
                             }
                         }
                         break;
@@ -236,12 +269,12 @@ namespace fastcode.runtime
                     else if(lastToken == Token.OpenBracket)
                     {
                         ReadNextToken();
-                        Value v = EvaluateNextExpression();
-                        if (v == null)
+                        Value indexValue = EvaluateNextExpression();
+                        if (indexValue == null)
                         {
                             return;
                         }
-                        if (v.Type != ValueType.Double)
+                        if (indexValue.Type != ValueType.Double)
                         {
                             throw new Exception("Indicie's must be of type double.");
                         }
@@ -258,7 +291,7 @@ namespace fastcode.runtime
                         {
                             if (GlobalVariables[id].Type == ValueType.Array)
                             {
-                                GlobalVariables[id].Array[(int)v.Double] = setval;
+                                GlobalVariables[id].Array[(int)indexValue.Double] = setval;
                                 break;
                             }
                             else if (GlobalVariables[id].Type == ValueType.String)
@@ -268,28 +301,28 @@ namespace fastcode.runtime
                                     throw new Exception("Strings can only index characters.");
                                 }
                                 char[] str = GlobalVariables[id].String.ToCharArray();
-                                str[(int)v.Double] = setval.Character;
+                                str[(int)indexValue.Double] = setval.Character;
                                 GlobalVariables[id] = new Value(new string(str));
                                 break;
                             }
                         }
                         else
                         {
-                            FunctionStructure f = GetCurrentFunction();
-                            if (f.LocalVariables[id].Type == ValueType.Array)
+                            functionFrame = GetCurrentContext();
+                            if (functionFrame.LocalVariables[id].Type == ValueType.Array)
                             {
-                                f.LocalVariables[id].Array[(int)v.Double] = setval;
+                                functionFrame.LocalVariables[id].Array[(int)indexValue.Double] = setval;
                                 break;
                             }
-                            else if (f.LocalVariables[id].Type == ValueType.String)
+                            else if (functionFrame.LocalVariables[id].Type == ValueType.String)
                             {
                                 if (setval.Type != ValueType.Character)
                                 {
                                     throw new Exception("Strings can only index characters.");
                                 }
-                                char[] str = f.LocalVariables[id].String.ToCharArray();
-                                str[(int)v.Double] = setval.Character;
-                                f.LocalVariables[id] = new Value(new string(str));
+                                char[] str = functionFrame.LocalVariables[id].String.ToCharArray();
+                                str[(int)indexValue.Double] = setval.Character;
+                                functionFrame.LocalVariables[id] = new Value(new string(str));
                                 break;
                             }
                         }
@@ -297,27 +330,27 @@ namespace fastcode.runtime
                     throw new Exception("Identifier \""+id+"\" cannot stand alone without a keyword.");
                 case Token.Break:
                     int i = 0;
-                    while (!(CallStack.Peek().GetType() == typeof(WhileStructure) || CallStack.Peek().GetType() == typeof(ForStructure)))
+                    while (!(CallStack.Peek().GetType() == typeof(WhileFrame) || CallStack.Peek().GetType() == typeof(ForFrame)))
                     {
-                        if (CallStack.Peek().GetType() == typeof(FunctionStructure))
+                        if (CallStack.Peek().GetType() == typeof(FunctionFrame))
                         {
                             throw new UnexpectedStatementException(Token.Break.ToString());
                         }
                         i++;
-                        prevStructure = CallStack.Pop();
+                        prevCallFrame = CallStack.Pop();
                     }
-                    prevStructure = CallStack.Pop();
-                    SkipControlStructure(i);
+                    prevCallFrame = CallStack.Pop();
+                    SkipCallFrame(i);
                     break;
                 case Token.Return:
-                    FunctionStructure function = null;
+                    functionFrame = null;
                     int j = 0;
                     while (CallStack.Count != 0)
                     {
-                        if(CallStack.Peek().GetType() == typeof(FunctionStructure))
+                        if(CallStack.Peek().GetType() == typeof(FunctionFrame))
                         {
-                            function = (FunctionStructure)CallStack.Pop();
-                            if(function.Identifier == "MAINSTRUCTURE")
+                            functionFrame = (FunctionFrame)CallStack.Pop();
+                            if(functionFrame.Identifier == "MAINSTRUCTURE")
                             {
                                 throw new Exception("Only functions may return values.");
                             }
@@ -328,17 +361,17 @@ namespace fastcode.runtime
                     }
                     if (PeekNextToken() != Token.Newline && PeekNextToken() != Token.Semicolon)
                     {
-                        CallStack.Push(function);
+                        CallStack.Push(functionFrame);
                         expr = EvaluateNextExpression();
                         if(expr == null)
                         {
                             return;
                         }
-                        function = (FunctionStructure)CallStack.Pop();
-                        function.ReturnResult = expr;
+                        functionFrame = (FunctionFrame)CallStack.Pop();
+                        functionFrame.ReturnResult = expr;
                     }
-                    CallStack.Push(function);
-                    SkipControlStructure(j,true);
+                    CallStack.Push(functionFrame);
+                    SkipCallFrame(j,true);
                     ExecuteNextStatement();
                     break;
                 case Token.Stop:
@@ -350,114 +383,101 @@ namespace fastcode.runtime
                     {
                         throw new Exception("Expected string, got " + lexer.TokenValue.Type);
                     }
-                    switch (lexer.TokenValue.String)
-                    {
-                        case "flib.debugger":
-                            debugger.Install(ref builtInFunctions, this);
-                            break;
-                        case "flib.wininterop":
-                            winInterop.Install(ref builtInFunctions, this);
-                            break;
-                        case "flib.math.polynomials":
-                            (new PolynomialLibrary()).Install(ref builtInFunctions, this);
-                            break;
-                        default:
-                            throw new Exception("Cannot find library " + lexer.TokenValue.Type);
-                    }
+                    
                     ReadNextToken();
                     break;
                 case Token.EndOfFile:
                     Exit = true;
                     return;
                 case Token.If:
-                    IfElifStructure ifStructure = new IfElifStructure();
-                    Value expr1 = EvaluateNextExpression();
-                    if(expr1 == null)
+                    IfElifFrame ifFrame = new IfElifFrame();
+                    expr = EvaluateNextExpression();
+                    if(expr == null)
                     {
                         return;
                     }
-                    ifStructure.Result = (expr1.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
-                    CallStack.Push(ifStructure);
+                    ifFrame.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1); //not not the actual result, it just checks if the condition failed so it can skip that section. Kinda misleading if you didn't know - just refer to the assertion token's case.
+                    CallStack.Push(ifFrame);
 
-                    ReadTillControlStructureStart(); //read till open bracket
+                    readTillCallFrameStart(); //read till open bracket
 
-                    if(ifStructure.Result == true) //skip till close bracket.
+                    if(ifFrame.Result == true) //skip till close bracket.
                     {
-                        SkipControlStructure();
-                        prevStructure = CallStack.Pop();
+                        SkipCallFrame();
+                        prevCallFrame = CallStack.Pop();
                     }
                     
                     break;
                 case Token.Else: //not if results are inverted 
-                    if (prevStructure.GetType() != typeof(IfElifStructure))
+                    if (prevCallFrame.GetType() != typeof(IfElifFrame))
                     {
                         throw new UnexpectedStatementException(keyword.ToString());
                     }
-                    IfElifStructure prevElseStructure = (IfElifStructure)prevStructure;
-                    if (prevElseStructure.Result == true) //skip all the crap
+                    prevElifFrame = (IfElifFrame)prevCallFrame;
+                    if (prevElifFrame.Result == true) //skip all the crap
                     {
-                        CallStack.Push(new ElseStructure());
-                        ReadTillControlStructureStart();
+                        CallStack.Push(new ElseFrame());
+                        readTillCallFrameStart();
                     }
-                    else if (prevElseStructure.Result == false)
+                    else if (prevElifFrame.Result == false)
                     {
-                        CallStack.Push(new ElseStructure());
-                        ReadTillControlStructureStart();
-                        SkipControlStructure();
-                        prevStructure = CallStack.Pop();
+                        CallStack.Push(new ElseFrame());
+                        readTillCallFrameStart();
+                        SkipCallFrame();
+                        prevCallFrame = CallStack.Pop();
                     }
                     break;
                 case Token.Elif:
-                    if(prevStructure.GetType() != typeof(IfElifStructure))
+                    if(prevCallFrame.GetType() != typeof(IfElifFrame))
                     {
                         throw new UnexpectedStatementException(keyword.ToString());
                     }
-                    IfElifStructure elifStructure = new IfElifStructure();
-                    prevElseStructure = (IfElifStructure)prevStructure;
-                    if (prevElseStructure.Result == true)
+                    IfElifFrame elifFrame = new IfElifFrame();
+                    prevElifFrame = (IfElifFrame)prevCallFrame;
+                    if (prevElifFrame.Result == true)
                     {
                         expr = EvaluateNextExpression();
                         if(expr == null)
                         {
                             return;
                         }
-                        elifStructure.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
-                        CallStack.Push(elifStructure);
-                        ReadTillControlStructureStart();
-                        if (elifStructure.Result == true)
+                        elifFrame.Result = (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1);
+                        CallStack.Push(elifFrame);
+                        readTillCallFrameStart();
+                        if (elifFrame.Result == true)
                         {
-                            SkipControlStructure();
-                            prevStructure = CallStack.Pop();
+                            SkipCallFrame();
+                            prevCallFrame = CallStack.Pop();
                         }
                     }
                     else
                     {
-                        CallStack.Push(elifStructure);
-                        ReadTillControlStructureStart();
-                        SkipControlStructure();
-                        prevStructure = CallStack.Pop();
+                        CallStack.Push(elifFrame);
+                        readTillCallFrameStart();
+                        SkipCallFrame();
+                        prevCallFrame = CallStack.Pop();
                     }
                     break;
                 case Token.While:
-                    WhileStructure whileStructure = new WhileStructure();
-                    whileStructure.ExpressionMarker = (Marker)expressionMarker.Clone();
+                    WhileFrame whileFrame = new WhileFrame();
+                    whileFrame.ExpressionMarker = (Marker)expressionMarker.Clone();
                     expr = EvaluateNextExpression();
                     if(expr == null)
                     {
                         return;
                     }
-                    CallStack.Push(whileStructure);
-                    ReadTillControlStructureStart();
+                    CallStack.Push(whileFrame);
+                    readTillCallFrameStart();
                     if (expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1)
                     {
-                        SkipControlStructure();
-                        prevStructure = CallStack.Pop();
+                        SkipCallFrame();
+                        prevCallFrame = CallStack.Pop();
                     }
                     break;
                 case Token.For:
-                    ForStructure forStructure = new ForStructure();
+                    ForFrame forFrame = new ForFrame();
                     MatchToken(Token.Identifier);
-                    forStructure.IndexerIdentifier = lexer.TokenIdentifier;
+                    forFrame.IndexerIdentifier = lexer.TokenIdentifier;
                     ReadNextToken();
                     MatchToken(Token.In);
                     ReadNextToken();
@@ -468,40 +488,40 @@ namespace fastcode.runtime
                     }
                     if(expr.Type == ValueType.Array)
                     {
-                        forStructure.Values = expr.Array;
+                        forFrame.Values = expr.Array;
                     }
                     else if(expr.Type == ValueType.String)
                     {
-                        forStructure.Values = new List<Value>();
+                        forFrame.Values = new List<Value>();
                         for (int k = 0; k < expr.String.Length; k++)
                         {
-                            forStructure.Values.Add(new Value(expr.String[k]));
+                            forFrame.Values.Add(new Value(expr.String[k]));
                         }
                     }
                     else
                     {
                         throw new Exception("Fastcode can only iterate through an array or string.");
                     }
-                    forStructure.currentIndex = 0;
-                    FunctionStructure functionStructure1 = GetCurrentFunction();
-                    if (forStructure.Values.Count > 0)
+                    forFrame.currentIndex = 0;
+                    functionFrame = GetCurrentContext();
+                    if (forFrame.Values.Count > 0)
                     {
-                        if (functionStructure1.LocalVariables.ContainsKey(forStructure.IndexerIdentifier))
+                        if (functionFrame.LocalVariables.ContainsKey(forFrame.IndexerIdentifier))
                         {
-                            functionStructure1.LocalVariables[forStructure.IndexerIdentifier] = forStructure.Values[0];
+                            functionFrame.LocalVariables[forFrame.IndexerIdentifier] = forFrame.Values[0];
                         }
                         else
                         {
-                            functionStructure1.LocalVariables.Add(forStructure.IndexerIdentifier, forStructure.Values[0]);
+                            functionFrame.LocalVariables.Add(forFrame.IndexerIdentifier, forFrame.Values[0]);
                         }
                     }
 
-                    CallStack.Push(forStructure);
-                    ReadTillControlStructureStart();
-                    if(forStructure.currentIndex >= forStructure.Values.Count)
+                    CallStack.Push(forFrame);
+                    readTillCallFrameStart();
+                    if(forFrame.currentIndex >= forFrame.Values.Count)
                     {
-                        SkipControlStructure();
-                        prevStructure = CallStack.Pop();
+                        SkipCallFrame();
+                        prevCallFrame = CallStack.Pop();
                     }
                     break;
                 case Token.Function:
@@ -511,7 +531,7 @@ namespace fastcode.runtime
                     {
                         throw new Exception("Identifiers must be unique");
                     }
-                    FunctionStructure functionStructure = new FunctionStructure(fid);
+                    functionFrame = new FunctionFrame(fid);
                     ReadNextToken();
                     MatchToken(Token.OpenParenthesis);
                     List<string> argument_identifiers = new List<string>();
@@ -539,18 +559,18 @@ namespace fastcode.runtime
                             throw new UnexpectedStatementException("an identifier", lastToken.ToString());
                         }
                     }
-                    functionStructure.SetArgumentParameters(argument_identifiers);
-                    CallStack.Push(functionStructure);
-                    ReadTillControlStructureStart();
-                    functionStructure = (FunctionStructure)CallStack.Pop();
-                    functions[fid] = functionStructure;
-                    SkipControlStructure();
+                    functionFrame.SetArgumentParameters(argument_identifiers);
+                    CallStack.Push(functionFrame);
+                    readTillCallFrameStart();
+                    functionFrame = (FunctionFrame)CallStack.Pop();
+                    functions[fid] = functionFrame;
+                    SkipCallFrame();
                     break;
                 case Token.CloseBrace: //checks to return or repeat. 
-                    if(CallStack.Peek().GetType() == typeof(WhileStructure))
+                    if(CallStack.Peek().GetType() == typeof(WhileFrame))
                     {
                         Marker currentpos = (Marker)lexer.Position.Clone();
-                        lexer.ShiftCurrentPosition(((WhileStructure)CallStack.Peek()).ExpressionMarker);
+                        lexer.ShiftCurrentPosition(((WhileFrame)CallStack.Peek()).ExpressionMarker);
                         ReadNextToken();
                         expr = EvaluateNextExpression();
                         if (expr == null)
@@ -559,7 +579,7 @@ namespace fastcode.runtime
                         }
                         if(expr.PerformBinaryOperation(Token.Equals, new Value(0)).Double == 1)
                         {
-                            prevStructure = CallStack.Pop();
+                            prevCallFrame = CallStack.Pop();
                             lexer.ShiftCurrentPosition(currentpos);
                         }
                         else
@@ -568,32 +588,32 @@ namespace fastcode.runtime
                             ReadNextToken();
                         }
                     }
-                    else if(CallStack.Peek().GetType() == typeof(ForStructure))
+                    else if(CallStack.Peek().GetType() == typeof(ForFrame))
                     {
-                        ForStructure forStructure2 = (ForStructure)CallStack.Pop();
+                        ForFrame forStructure2 = (ForFrame)CallStack.Pop();
                         forStructure2.currentIndex++;
-                        FunctionStructure functionStructure2 = GetCurrentFunction();
+                        functionFrame = GetCurrentContext();
                         if (forStructure2.currentIndex < forStructure2.Values.Count)
                         {
-                            functionStructure2.LocalVariables[forStructure2.IndexerIdentifier] = forStructure2.Values[forStructure2.currentIndex];
+                            functionFrame.LocalVariables[forStructure2.IndexerIdentifier] = forStructure2.Values[forStructure2.currentIndex];
                             CallStack.Push(forStructure2);
                             lexer.ShiftCurrentPosition(CallStack.Peek().StartPosition);
                             ReadNextToken();
                         }
                         else
                         {
-                            functionStructure2.LocalVariables.Remove(forStructure2.IndexerIdentifier);
+                            functionFrame.LocalVariables.Remove(forStructure2.IndexerIdentifier);
                         }
                     }
-                    else if(CallStack.Peek().GetType() == typeof(FunctionStructure))
+                    else if(CallStack.Peek().GetType() == typeof(FunctionFrame))
                     {
-                        FunctionStructure finishedfunction = (FunctionStructure)CallStack.Pop();
-                        lexer.ShiftCurrentPosition(finishedfunction.ReturnPosition);
-                        GetCurrentFunction().functionResults.Enqueue(finishedfunction.ReturnResult);
+                        functionFrame = (FunctionFrame)CallStack.Pop();
+                        lexer.ShiftCurrentPosition(functionFrame.ReturnPosition);
+                        GetCurrentContext().functionResults.Enqueue(functionFrame.ReturnResult);
                     }
                     else
                     {
-                        prevStructure = CallStack.Pop();
+                        prevCallFrame = CallStack.Pop();
                     }
 
                     break;
@@ -613,37 +633,10 @@ namespace fastcode.runtime
             }
         }
 
-        //reads the next token
-        Token ReadNextToken()
-        {
-            prevToken = lastToken;
-            lastToken = lexer.ReadNextToken();
-            return lastToken;
-        }
-
-        //Reads the next non-newline token
-        Token PeekNextToken()
-        {
-            Marker marker = (Marker)lexer.Position.Clone();
-            Token old = lastToken;
-            Value oldval = lexer.TokenValue;
-            string oldid = lexer.TokenIdentifier;
-            ReadNextToken();
-            while(lastToken == Token.Newline)
-            {
-                ReadNextToken();
-            }
-            Token tok = lastToken;
-            lastToken = old;
-            lexer.TokenValue = oldval;
-            lexer.TokenIdentifier = oldid;
-            lexer.ShiftCurrentPosition(marker);
-            return tok;
-        }
 
         Value EvaluateNextExpression()
         {
-            FunctionStructure function = GetCurrentFunction();
+            FunctionFrame function = GetCurrentContext();
             Value val = EvaluateNextExpression(0,function);
             if(val == null)
             {
@@ -662,7 +655,7 @@ namespace fastcode.runtime
 
         //this and next value are really important because that's how values for arguments are ascertained
         //gets the next expression (conditions, expressions) and evaluates it. Return's 0 or 1 for conditions
-        Value EvaluateNextExpression(int min, FunctionStructure current)
+        Value EvaluateNextExpression(int min, FunctionFrame current, bool multiterm = true, bool candivide = true)
         {
             Dictionary<Token, int> precedens = new Dictionary<Token, int>()
             {
@@ -684,13 +677,25 @@ namespace fastcode.runtime
                 //we could just put precedens.contains token but you know.... 
                 if (lastToken < Token.Plus || lastToken > Token.And || precedens[lastToken] < min)
                     break;
-
+                if(!multiterm && precedens[lastToken] < 3)
+                {
+                    break;
+                }
                 Token op = lastToken;
+                if (!candivide && op == Token.Slash)
+                {
+                    break;
+                }
                 int prec = precedens[lastToken]; // Operator Precedence
                 int assoc = 0; // 0 left, 1 right; Operator associativity
                 int nextmin = assoc == 0 ? prec : prec + 1;
                 ReadNextToken();
-                Value rhs = EvaluateNextExpression(nextmin,current);
+                bool divide = true;
+                if(op == Token.Slash)
+                {
+                    divide = false;
+                }
+                Value rhs = EvaluateNextExpression(nextmin,current,false,divide);
                 if(rhs == null)
                 {
                     return null;
@@ -702,7 +707,7 @@ namespace fastcode.runtime
         }
 
         //gets the next value
-        Value NextValue(FunctionStructure current)
+        Value NextValue(FunctionFrame current)
         {
             Value val = Value.Null;
             if(lastToken == Token.Value) //raw value
@@ -803,11 +808,11 @@ namespace fastcode.runtime
                     }
                     if (functions.ContainsKey(fid))
                     {
-                        if(CallStack.Count > 1000)
+                        if (CallStack.Count > 1000)
                         {
                             throw new StackOverflowException("The call stack's size has exceeded the 1000 item limit.");
                         }
-                        FunctionStructure f = functions[fid].CloneTemplate();
+                        FunctionFrame f = functions[fid].CloneTemplate();
                         f.SetArguments(arguments);
                         f.ReturnPosition = (Marker)keywordMarker.Clone();
                         f.ReturnResult = Value.Null;
@@ -819,15 +824,19 @@ namespace fastcode.runtime
                     else
                     {
                         val = builtInFunctions[fid].Invoke(arguments);
-                        current.processedFunctionResults.Enqueue(val);
                         ReadNextToken();
+                        if (val == null)
+                        {
+                            return null;
+                        }
+                        current.processedFunctionResults.Enqueue(val);
                         return val;
                     }
                 }
                 else
                 {
                     val = null;
-                    FunctionStructure function = GetCurrentFunction();
+                    FunctionFrame function = GetCurrentContext();
                     if (function.LocalVariables.ContainsKey(lexer.TokenIdentifier))
                     {
                         string fid = lexer.TokenIdentifier;
@@ -875,7 +884,7 @@ namespace fastcode.runtime
             {
                 ReadNextToken();
                 val = EvaluateNextExpression(0,current); //call the evaluate function
-                if(val == null)
+                if (val == null)
                 {
                     return null;
                 }
@@ -908,16 +917,53 @@ namespace fastcode.runtime
             //this part handles uniary operations
             else
             {
+                Token tok = lastToken;
                 ReadNextToken();
-                Token tok = prevToken;
-                Value val1 = NextValue(current);
-                if(val1 == null)
+                if (tok == Token.Refrence)
                 {
-                    return null;
+                    val = new Value(lexer.TokenIdentifier);
                 }
-                val = val1.PerformUniaryOperation(tok);
+                else
+                {
+                    Value val1 = NextValue(current);
+                    if (val1 == null)
+                    {
+                        return null;
+                    }
+                    val = val1.PerformUniaryOperation(tok);
+                }
             }
             return val;
+        }
+
+        public Value InvokeUserFunction(List<Value> arguments)
+        {
+            if(!(arguments.Count >= 1))
+            {
+                throw new ArgumentException("The amount of arguments passed into the function do not match the amount of expected arguments.");
+            }
+            if(arguments[0].Type != ValueType.String)
+            {
+                throw new Exception("An invalid argument type has been passed into a built in function.");
+            }
+            if (CallStack.Count > 1000)
+            {
+                throw new StackOverflowException("The call stack's size has exceeded the 1000 item limit.");
+            }
+            FunctionFrame f = functions[arguments[0].String].CloneTemplate();
+            if(arguments.Count == 1)
+            {
+                f.SetArguments(new List<Value>());
+            }
+            else
+            {
+                f.SetArguments(arguments.GetRange(1,arguments.Count-1));
+            }
+            f.ReturnPosition = (Marker)keywordMarker.Clone();
+            f.ReturnResult = Value.Null;
+            CallStack.Push(f);
+            lexer.ShiftCurrentPosition(functions[arguments[0].String].StartPosition);
+            return null;
         }
     }
 }

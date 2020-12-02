@@ -15,6 +15,39 @@ namespace fastcode.flib
         {
             return function.Invoke(new List<Value>(arguments));
         }
+
+        public static Value invokeBuiltInFunction(BuiltInFunction function, params object[] arguments)
+        {
+            List<Value> value_args = new List<Value>();
+            foreach(object arg in arguments)
+            {
+                if(arg.GetType() == typeof(string))
+                {
+                    value_args.Add(new Value((string)arg));
+                }
+                else if(arg.GetType() == typeof(char))
+                {
+                    value_args.Add(new Value((char)arg));
+                }
+                else if (arg.GetType() == typeof(int))
+                {
+                    value_args.Add(new Value((double)arg));
+                }
+                else if (arg.GetType() == typeof(double))
+                {
+                    value_args.Add(new Value((double)arg));
+                }
+                else if(arg == null)
+                {
+                    value_args.Add(null);
+                }
+                else
+                {
+                    throw new Exception("Invalid Value type.");
+                }
+            }
+            return function.Invoke(new List<Value>(value_args));
+        }
     }
 
     class StandardLibrary : Library
@@ -26,6 +59,7 @@ namespace fastcode.flib
         {
             functions.Add("split", Split);
             functions.Add("type", GetTypeID);
+            functions.Add("getType", GetTypeID);
             functions.Add("stod", StringToDouble);
             functions.Add("dtos", DoubleToString);
             functions.Add("toCharArray", ToCharArray);
